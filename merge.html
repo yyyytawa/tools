@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>merge</title>
+</head>
+<body>
+    <h3>用https://example.yyyyt.top?if="链接","链接2","链接N"&of="输出文件名" (of参数是可选项,不输入的话就以默认文件名merged.bin).<li>注意:浏览器需要支持Blob元素下载!</li><li>推荐使用新版本的Edge,火狐,Chrome浏览器访问</li></h3>
+    <script>
+        async function fetchFilesAndMerge() {
+            const params = new URLSearchParams(window.location.search);
+            const inputFiles = params.get('if').replace(/"/g, '').split(',');
+            const outputFileName = params.get('of') ? params.get('of').replace(/"/g, '') : 'merged.bin';
+
+            const mergedData = [];
+
+            for (const file of inputFiles) {
+                try {
+                    const response = await fetch(file);
+                    if (!response.ok) throw new Error(`无法获取文件: ${file}`);
+                    const arrayBuffer = await response.arrayBuffer();
+                    mergedData.push(new Uint8Array(arrayBuffer)); // 将文件内容存储为 Uint8Array
+                } catch (error) {
+                    console.error(error);
+                }
+            }
+
+            // 合并所有文件的二进制数据
+            const totalLength = mergedData.reduce((acc, curr) => acc + curr.length, 0);
+            const finalData = new Uint8Array(totalLength);
+            let offset = 0;
+
+            for (const data of mergedData) {
+                finalData.set(data, offset);
+                offset += data.length;
+            }
+
+            // 创建一个下载链接
+            const blob = new Blob([finalData], { type: 'application/octet-stream' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = outputFileName;
+            a.click(); // 自动点击下载链接
+            URL.revokeObjectURL(url); // 释放 URL 对象
+        }
+
+        fetchFilesAndMerge();
+    </script>
+</body>
+</html>
