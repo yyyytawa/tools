@@ -6,12 +6,30 @@
     <title>merge</title>
 </head>
 <body>
-    <h3>用https://example.yyyyt.top?if="链接","链接2","链接N"&of="输出文件名" (of参数是可选项,不输入的话就以默认文件名merged.bin).<li>注意:浏览器需要支持Blob元素下载!</li><li>推荐使用新版本的Edge,火狐,Chrome浏览器访问</li></h3>
+    <h3>教程看文档站!<li>注意:浏览器需要支持Blob元素下载!</li><li>推荐使用新版本的Edge,火狐,Chrome浏览器访问</li></h3>
     <script>
         async function fetchFilesAndMerge() {
             const params = new URLSearchParams(window.location.search);
-            const inputFiles = params.get('if').replace(/"/g, '').split(',');
+            const inputListUrl = params.get('il').replace(/"/g, '');
             const outputFileName = params.get('of') ? params.get('of').replace(/"/g, '') : 'merged.bin';
+
+            let inputFiles;
+            if (inputListUrl) {
+                // 如果存在 il 参数，则从 inputlist.txt 获取文件列表
+                try {
+                    const response = await fetch(inputListUrl);
+                    if (!response.ok) throw new Error(`无法获取文件列表: ${inputListUrl}`);
+                    const text = await response.text();
+                    inputFiles = text.trim().split('\n').filter(line => !line.startsWith('#')).map(line => line.replace(/\s/g, '')); // 过滤掉以 # 开头的注释行并去除所有空格
+                } catch (error) {
+                    console.error(error);
+                    // 处理错误，例如显示错误消息
+                    return;
+                }
+            } else {
+                // 否则使用 if 参数
+                inputFiles = params.get('if').replace(/"/g, '').split(',');
+            }
 
             const mergedData = [];
 
