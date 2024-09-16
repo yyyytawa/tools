@@ -10,7 +10,7 @@
     <script>
         async function fetchFilesAndMerge() {
             const params = new URLSearchParams(window.location.search);
-            const inputListUrl = params.get('il').replace(/"/g, '');
+            const inputListUrl = params.get('il') ? params.get('il').replace(/"/g, '') : null; 
             const outputFileName = params.get('of') ? params.get('of').replace(/"/g, '') : 'merged.bin';
 
             let inputFiles;
@@ -28,7 +28,7 @@
                 }
             } else {
                 // 否则使用 if 参数
-                inputFiles = params.get('if').replace(/"/g, '').split(',');
+                inputFiles = params.get('if').replace(/"/g, '').split(',').map(line => line.replace(/\s/g, '')); // 去除所有空格
             }
 
             const mergedData = [];
