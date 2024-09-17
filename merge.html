@@ -10,7 +10,7 @@
     <script>
         async function fetchFilesAndMerge() {
             const params = new URLSearchParams(window.location.search);
-            const inputListUrl = params.get('il') ? params.get('il').replace(/"/g, '') : null; 
+            const inputListUrl = params.get('il') ? params.get('il').replace(/"/g, '') : null;
             const outputFileName = params.get('of') ? params.get('of').replace(/"/g, '') : 'merged.bin';
 
             let inputFiles;
@@ -31,18 +31,17 @@
                 inputFiles = params.get('if').replace(/"/g, '').split(',').map(line => line.replace(/\s/g, '')); // 去除所有空格
             }
 
-            const mergedData = [];
+            // 使用 Promise.all 并发获取文件
+            const fetchPromises = inputFiles.map(file => 
+                fetch(file)
+                    .then(response => {
+                        if (!response.ok) throw new Error(`无法获取文件: ${file}`);
+                        return response.arrayBuffer();
+                    })
+                    .then(arrayBuffer => new Uint8Array(arrayBuffer))
+            );
 
-            for (const file of inputFiles) {
-                try {
-                    const response = await fetch(file);
-                    if (!response.ok) throw new Error(`无法获取文件: ${file}`);
-                    const arrayBuffer = await response.arrayBuffer();
-                    mergedData.push(new Uint8Array(arrayBuffer)); // 将文件内容存储为 Uint8Array
-                } catch (error) {
-                    console.error(error);
-                }
-            }
+            const mergedData = await Promise.all(fetchPromises);
 
             // 合并所有文件的二进制数据
             const totalLength = mergedData.reduce((acc, curr) => acc + curr.length, 0);
