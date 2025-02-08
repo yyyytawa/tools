@@ -4,10 +4,17 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>merge</title>
+    <script src="/StreamSaver/StreamSaver.js"></script>
 </head>
 <body>
-    <h3>教程看文档站!<li>注意:浏览器需要支持Blob元素下载!</li><li>推荐使用新版本的Edge,火狐,Chrome浏览器访问</li></h3>
+    <h3>教程看文档站!
+        <li>注意:浏览器需要支持流式下载!</li>
+        <li>推荐使用新版本的Edge,火狐,Chrome浏览器访问</li>
+    </h3>
     <script>
+        // StreamSaver.js 代理配置
+        window.streamSaver.mitm = "/StreamSaver/mitm.html";
+
         async function fetchFilesAndMerge() {
             const params = new URLSearchParams(window.location.search);
             const inputListUrl = params.get('il') ? params.get('il').replace(/"/g, '') : null;
@@ -15,52 +22,59 @@
 
             let inputFiles;
             if (inputListUrl) {
-                // 如果存在 il 参数，则从 inputlist.txt 获取文件列表
                 try {
                     const response = await fetch(inputListUrl);
                     if (!response.ok) throw new Error(`无法获取文件列表: ${inputListUrl}`);
                     const text = await response.text();
-                    inputFiles = text.trim().split('\n').filter(line => !line.startsWith('#')).map(line => line.replace(/\s/g, '')); // 过滤掉以 # 开头的注释行并去除所有空格
+                    inputFiles = text
+                        .trim() // 去掉整体字符串的首尾空格
+                        .split('\n') // 按行拆分
+                        .map(line => line.split('#')[0].trim()) // 去除 `#` 号后面的注释，并修剪空格
+                        .filter(line => line.length > 0); // 过滤空行
                 } catch (error) {
                     console.error(error);
-                    // 处理错误，例如显示错误消息
                     return;
                 }
             } else {
-                // 否则使用 if 参数
-                inputFiles = params.get('if').replace(/"/g, '').split(',').map(line => line.replace(/\s/g, '')); // 去除所有空格
+                inputFiles = params.get('if')
+                    .replace(/"/g, '')
+                    .split(',')
+                    .map(line => line.trim()) // 确保去除空格
+                    .filter(line => line.length > 0);
             }
 
-            // 使用 Promise.all 并发获取文件
-            const fetchPromises = inputFiles.map(file => 
-                fetch(file)
-                    .then(response => {
-                        if (!response.ok) throw new Error(`无法获取文件: ${file}`);
-                        return response.arrayBuffer();
-                    })
-                    .then(arrayBuffer => new Uint8Array(arrayBuffer))
-            );
+            console.log("文件列表:", inputFiles);
 
-            const mergedData = await Promise.all(fetchPromises);
+            // 创建流式写入
+            const fileStream = streamSaver.createWriteStream(outputFileName);
+            const writer = fileStream.getWriter();
 
-            // 合并所有文件的二进制数据
-            const totalLength = mergedData.reduce((acc, curr) => acc + curr.length, 0);
-            const finalData = new Uint8Array(totalLength);
-            let offset = 0;
+            try {
+                for (const fileUrl of inputFiles) {
+                    const cleanUrl = fileUrl.replace(/\s/g, ""); // 彻底去除所有空格
+                    console.log(`正在下载: ${cleanUrl}`);
 
-            for (const data of mergedData) {
-                finalData.set(data, offset);
-                offset += data.length;
+                    const response = await fetch(cleanUrl);
+                    if (!response.ok) throw new Error(`无法获取文件: ${cleanUrl}`);
+
+                    const reader = response.body.getReader();
+                    let done = false;
+
+                    while (!done) {
+                        const { value, done: readerDone } = await reader.read();
+                        if (value) {
+                            await writer.write(value); // 直接写入文件
+                        }
+                        done = readerDone;
+                    }
+                }
+
+                console.log("所有文件合并完成！");
+                await writer.close();
+            } catch (error) {
+                console.error("合并过程中出错:", error);
+                await writer.abort();
             }
-
-            // 创建一个下载链接
-            const blob = new Blob([finalData], { type: 'application/octet-stream' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = outputFileName;
-            a.click(); // 自动点击下载链接
-            URL.revokeObjectURL(url); // 释放 URL 对象
         }
 
         fetchFilesAndMerge();
