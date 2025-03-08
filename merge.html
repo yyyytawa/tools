@@ -3,81 +3,299 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>merge</title>
+    <title>文件合并工具</title>
     <script src="/StreamSaver/StreamSaver.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f9;
+            color: #333;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #fff;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            border-radius: 8px;
+        }
+        textarea {
+            width: 100%;
+            height: 150px;
+            margin: 10px 0;
+            padding: 10px;
+            font-size: 14px;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            cursor: pointer;
+            font-size: 16px;
+            border-radius: 5px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        #status {
+            margin-top: 10px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            background-color: #f9f9f9;
+            min-height: 2em; /* 确保 status 区域有一定的高度 */
+        }
+        .error {
+            color: red;
+        }
+    </style>
 </head>
 <body>
-    <h3>教程看文档站!
-        <li>注意:浏览器需要支持流式下载!</li>
-        <li>推荐使用新版本的Edge,火狐,Chrome浏览器访问</li>
-    </h3>
+    <div class="container">
+        <h3>文件合并工具</h3>
+
+        <div>
+            <label for="ilLink">输入文件列表 URL (il):</label>
+            <input type="text" id="ilLink" placeholder="输入文件列表 URL">
+        </div>
+
+        <p>或者，请输入文件 URL（每行一个）：</p>
+        <textarea id="fileList" placeholder="输入多个文件 URL，每行一个"></textarea>
+        <br>
+
+        <div>
+            <label for="proxyUrl">输入代理服务器 URL (proxyurl): (可选)</label>
+            <input type="text" id="proxyUrl" placeholder="输入代理服务器 URL">
+        </div>
+        <br>
+
+        <label for="outputFileName">输出文件名:</label>
+        <input type="text" id="outputFileName" value="merged.bin">
+        <br>
+        <button onclick="startMerge()">开始合并</button>
+
+        <div id="status">等待操作...</div>
+    </div>
+
     <script>
-        // StreamSaver.js 代理配置
         window.streamSaver.mitm = "/StreamSaver/mitm.html";
 
-        async function fetchFilesAndMerge() {
-            const params = new URLSearchParams(window.location.search);
-            const inputListUrl = params.get('il') ? params.get('il').replace(/"/g, '') : null;
-            const outputFileName = params.get('of') ? params.get('of').replace(/"/g, '') : 'merged.bin';
+        function setStatus(message, isError = false) {
+            const statusDiv = document.getElementById('status');
+            statusDiv.textContent = message;
+            statusDiv.className = isError ? 'error' : ''; // Apply error class if needed
+        }
 
-            let inputFiles;
-            if (inputListUrl) {
-                try {
-                    const response = await fetch(inputListUrl);
-                    if (!response.ok) throw new Error(`无法获取文件列表: ${inputListUrl}`);
-                    const text = await response.text();
-                    inputFiles = text
-                        .trim() // 去掉整体字符串的首尾空格
-                        .split('\n') // 按行拆分
-                        .map(line => line.split('#')[0].trim()) // 去除 `#` 号后面的注释，并修剪空格
-                        .filter(line => line.length > 0); // 过滤空行
-                } catch (error) {
-                    console.error(error);
-                    return;
-                }
-            } else {
-                inputFiles = params.get('if')
-                    .replace(/"/g, '')
-                    .split(',')
-                    .map(line => line.trim()) // 确保去除空格
-                    .filter(line => line.length > 0);
-            }
+        function formatBytes(bytes, decimals = 2) {
+            if (bytes === 0) return '0 Bytes';
 
+            const k = 1024;
+            const dm = decimals < 0 ? 0 : decimals;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'];
+
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+        }
+
+        async function fetchFilesAndMerge(inputFiles, outputFileName = 'merged.bin', proxyUrl = null) {
             console.log("文件列表:", inputFiles);
+            setStatus("准备合并...");
 
-            // 创建流式写入
             const fileStream = streamSaver.createWriteStream(outputFileName);
             const writer = fileStream.getWriter();
 
+            let totalBytesDownloaded = 0;
+            let startTime = null;
+
+
             try {
                 for (const fileUrl of inputFiles) {
-                    const cleanUrl = fileUrl.replace(/\s/g, ""); // 彻底去除所有空格
-                    console.log(`正在下载: ${cleanUrl}`);
+                    const cleanUrl = fileUrl.trim();
+                    if (!cleanUrl) continue;
 
-                    const response = await fetch(cleanUrl);
-                    if (!response.ok) throw new Error(`无法获取文件: ${cleanUrl}`);
+                    const finalUrl = proxyUrl ? proxyUrl + '/' + cleanUrl : cleanUrl;
 
-                    const reader = response.body.getReader();
-                    let done = false;
+                    setStatus(`正在下载: ${cleanUrl}`);
+                    console.log(`正在下载: ${cleanUrl} (最终请求 URL: ${finalUrl})`);
 
-                    while (!done) {
-                        const { value, done: readerDone } = await reader.read();
-                        if (value) {
-                            await writer.write(value); // 直接写入文件
+                    let currentBytesDownloaded = 0;
+                    let lastUpdateTime = Date.now();
+                    startTime = startTime || Date.now();
+
+                    try {
+                        const response = await fetch(finalUrl);
+                        if (!response.ok) {
+                            throw new Error(`无法获取文件: ${cleanUrl} (HTTP ${response.status})`);
                         }
-                        done = readerDone;
+
+                        const reader = response.body.getReader();
+                        const contentLength = response.headers.get('Content-Length');
+                        let done = false;
+
+                        while (!done) {
+                            const { value, done: readerDone } = await reader.read();
+                            if (value) {
+                                await writer.write(value);
+                                totalBytesDownloaded += value.length;
+                                currentBytesDownloaded += value.length;
+
+                                const currentTime = Date.now();
+                                if (currentTime - lastUpdateTime > 250) { // Update every 250ms
+                                    const elapsedTime = (currentTime - startTime) / 1000; // in seconds
+                                    const speed = totalBytesDownloaded / elapsedTime;
+                                    const downloaded = formatBytes(currentBytesDownloaded); // Only show current file's downloaded size
+                                    const total = contentLength ? ' / ' + formatBytes(contentLength) : '';  // 当前文件大小
+                                    setStatus(`正在下载: ${cleanUrl} - ${downloaded}${total} - 速度: ${formatBytes(speed)}/s`);
+
+                                    lastUpdateTime = currentTime;
+
+                                }
+                            }
+                            done = readerDone;
+                        }
+
+                        // Reset currentBytesDownloaded for the next file
+                        currentBytesDownloaded = 0;
+
+
+                    } catch (fetchError) {
+                        console.error(`下载 ${cleanUrl} 出错:`, fetchError);
+                        setStatus(`下载 ${cleanUrl} 出错: ${fetchError.message}`, true);
+                        await writer.abort();
+                        return; // Stop merging if any file fails (you could change this to skip instead)
                     }
                 }
 
                 console.log("所有文件合并完成！");
+                setStatus("所有文件合并完成！");
                 await writer.close();
             } catch (error) {
                 console.error("合并过程中出错:", error);
+                setStatus(`合并过程中出错: ${error.message}`, true);
                 await writer.abort();
             }
         }
 
-        fetchFilesAndMerge();
+        function startMerge() {
+            const ilLink = document.getElementById('ilLink').value.trim();
+            const fileListText = document.getElementById('fileList').value.trim();
+            const outputFileName = document.getElementById('outputFileName').value.trim();
+            const proxyUrl = document.getElementById('proxyUrl').value.trim(); // 获取 proxyUrl
+
+            //  HTTPS 检查
+            if (proxyUrl.startsWith('http://') && (ilLink.startsWith('https://') || fileListText.includes('https://'))) {
+                alert("当使用 HTTPS 连接时，请使用 HTTPS 代理服务器 URL！");
+                return;
+            }
+
+            if (ilLink && fileListText) {
+                alert("请只输入文件列表 URL (il) 或直接输入文件 URL，不要同时输入！");
+                return;
+            }
+
+            if (ilLink) {
+                setStatus("正在获取文件列表...");
+
+                fetch(ilLink)
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error(`无法获取文件列表: ${ilLink} (HTTP ${response.status})`);
+                        }
+                        return response.text();
+                    })
+                    .then(text => {
+                        const inputFiles = text
+                            .trim()
+                            .split('\n')
+                            .map(line => line.split('#')[0].trim())
+                            .filter(line => line.length > 0);
+                        if (inputFiles.length === 0) {
+                            alert("文件列表为空！");
+                            return;
+                        }
+                        fetchFilesAndMerge(inputFiles, outputFileName, proxyUrl); // 传递 proxyUrl
+                    })
+                    .catch(error => {
+                        console.error("无法获取文件列表:", error);
+                        setStatus(`无法获取文件列表: ${error.message}`, true);
+                    });
+
+            } else if (fileListText) {
+                const fileList = fileListText
+                    .split('\n')
+                    .map(line => line.split('#')[0].trim())
+                    .filter(line => line.length > 0);
+
+                if (fileList.length === 0) {
+                    alert("请输入至少一个文件 URL！");
+                    return;
+                }
+
+                fetchFilesAndMerge(fileList, outputFileName, proxyUrl); // 传递 proxyUrl
+            } else {
+                alert("请输入文件列表 URL (il) 或直接输入文件 URL！");
+            }
+        }
+
+
+        // 解析 URL 参数，支持原有方式
+        window.onload = function () {
+            const params = new URLSearchParams(window.location.search);
+            const inputListUrl = params.get('il') ? params.get('il').replace(/"/g, '') : null;
+            let outputFileName = params.get('of') ? params.get('of').replace(/"/g, '') : 'merged.bin';
+            const proxyUrl = params.get('proxy') ? params.get('proxy').replace(/"/g, '') : null; // 获取 proxyUrl
+
+            // 设置 proxyUrl 输入框的值
+            if (proxyUrl) {
+                document.getElementById('proxyUrl').value = proxyUrl;
+            }
+
+
+            if (inputListUrl) {
+                // 如果 URL 中有 il 参数，直接开始合并
+                fetchAndMergeFromURL(inputListUrl, outputFileName, proxyUrl); // 传递 proxyUrl
+            } else if (params.get('if')) {
+                const inputFiles = params.get('if')
+                    .replace(/"/g, '')
+                    .split(',')
+                    .map(line => line.trim())
+                    .filter(line => line.length > 0);
+                fetchFilesAndMerge(inputFiles, outputFileName, proxyUrl); // 传递 proxyUrl
+            }
+        };
+
+        function fetchAndMergeFromURL(inputListUrl, outputFileName, proxyUrl) {
+            //  HTTPS 检查
+            if (proxyUrl && proxyUrl.startsWith('http://') && inputListUrl.startsWith('https://')) {
+                alert("当使用 HTTPS 连接时，请使用 HTTPS 代理服务器 URL！");
+                return;
+            }
+
+            setStatus("正在获取文件列表...");
+
+            fetch(inputListUrl)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`无法获取文件列表: ${inputListUrl} (HTTP ${response.status})`);
+                    }
+                    return response.text();
+                })
+                .then(text => {
+                    const inputFiles = text
+                        .trim()
+                        .split('\n')
+                        .map(line => line.split('#')[0].trim())
+                        .filter(line => line.length > 0);
+                    fetchFilesAndMerge(inputFiles, outputFileName, proxyUrl); // 传递 proxyUrl
+                })
+                .catch(error => {
+                    console.error("无法获取文件列表:", error);
+                    setStatus(`无法获取文件列表: ${error.message}`, true);
+                });
+        }
     </script>
 </body>
 </html>
