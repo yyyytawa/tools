@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>文件分片上传与保存</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+        }
+
+        .container {
+            width: 500px;
+            margin: 20px auto;
+            padding: 20px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+        }
+
+        input[type="text"], input[type="file"] {
+            width: 100%;
+            padding: 8px;
+            margin-bottom: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 5px;
+        }
+
+        button:hover {
+            background-color: #3e8e41;
+        }
+
+        #uploadResult {
+            margin-top: 10px;
+            padding: 10px;
+            border: 1px solid #eee;
+            border-radius: 4px;
+            background-color: #f9f9f9;
+        }
+
+        #progress {
+            width: 100%;
+            height: 20px;
+            background-color: #f0f0f0;
+            border-radius: 5px;
+            margin-bottom: 10px;
+        }
+
+        #progressBar {
+            width: 0%;
+            height: 100%;
+            background-color: #4CAF50;
+            border-radius: 5px;
+        }
+
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>文件分片上传与保存</h1>
+
+    <label for="token">Token:</label>
+    <input type="text" id="token" name="token" placeholder="请输入你的 Token">
+
+    <button type="button" onclick="clearToken()">清除 Token</button>
+
+    <label for="file">选择要上传的文件 (最大 20MB):</label>
+    <input type="file" id="file" name="file">
+
+    <div id="progress">
+        <div id="progressBar"></div>
+    </div>
+
+    <button type="button" onclick="uploadFileInChunks()">上传并保存</button>
+    <button type="button" onclick="downloadMD5List()">下载MD5列表</button>
+
+
+    <div id="uploadResult"></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/spark-md5/3.0.2/spark-md5.min.js"></script>
+<script>
+    // 页面加载时，从 localStorage 恢复 Token
+    window.onload = function () {
+        const savedToken = localStorage.getItem('uploadToken');
+        if (savedToken) {
+            document.getElementById('token').value = savedToken;
+        }
+    };
+
+    // 监听 Token 输入，自动保存到 localStorage
+    document.getElementById('token').addEventListener('input', function () {
+        localStorage.setItem('uploadToken', this.value);
+    });
+
+    // 清除 Token
+    function clearToken() {
+        localStorage.removeItem('uploadToken');
+        document.getElementById('token').value = '';
+    }
+
+    const chunkSize = 1024 * 1024 * 19; // 19MB chunk size
+    let chunkMD5List = []; // Array to store chunk MD5s
+    let totalChunks = 0; // Store total chunks globally
+    let currentChunk = 0;
+    let file; // Store the file object globally
+    let fileNameWithoutExtension; // Store filename without extension globally
+
+    function uploadFileInChunks() {
+        const token = document.getElementById('token').value;
+        const fileInput = document.getElementById('file');
+        file = fileInput.files[0]; // Assign file to the global variable
+
+        if (!token) {
+            displayResult('请先输入 Token。');
+            return;
+        }
+
+        if (!file) {
+            displayResult('请选择一个文件。');
+            return;
+        }
+
+        fileNameWithoutExtension = file.name.substring(0, file.name.lastIndexOf('.')) || file.name; // Set the global variable
+        totalChunks = Math.ceil(file.size / chunkSize); // Calculate and store totalChunks
+        currentChunk = 0;
+        chunkMD5List = []; // Reset MD5 list
+        displayResult(`开始上传 ${file.name}, 共 ${totalChunks} 个分片.`); // Inform the user
+
+        uploadNextChunk();
+    }
+
+    function uploadNextChunk() {
+        if (currentChunk >= totalChunks) {
+            displayResult('文件上传完成!');
+            return; // All chunks uploaded
+        }
+
+        uploadChunk(currentChunk, 0); // Start with retryCount = 0
+    }
+
+    function uploadChunk(chunk, retryCount) {
+        const start = chunk * chunkSize;
+        const end = Math.min(file.size, start + chunkSize);
+        const chunkFile = file.slice(start, end);
+
+        calculateMD5(chunkFile, function (chunkMD5) {
+            const formData = new FormData();
+            const chunkFileName = fileNameWithoutExtension + "_chunk_" + chunk; //  为每个分片分配唯一的名称 (没有扩展名)
+            formData.append('file', chunkFile, chunkFileName);
+
+            const xhr = new XMLHttpRequest();
+            const uploadUrl = 'https://chat-go.jwzhd.com/open-apis/v1/file/upload?token=' + document.getElementById('token').value;
+            xhr.open('POST', uploadUrl, true);
+
+            xhr.upload.onprogress = function (event) {
+                if (event.lengthComputable) {
+                    const percentComplete = ((chunk * chunkSize + event.loaded) / file.size) * 100;
+                    updateProgressBar(percentComplete);
+                }
+            };
+
+            xhr.onload = function () {
+                if (xhr.status === 200) {
+                    try {
+                        const response = JSON.parse(xhr.responseText);
+                        if (response.code === 1 && response.data && response.data.fileKey) {
+                            // 找到要更新的数组索引
+                            const index = chunkMD5List.findIndex(item => item.chunk === chunk);
+                            if (index !== -1) {
+                                // 更新现有的 MD5 值
+                                chunkMD5List[index].md5 = chunkMD5;
+                            } else {
+                                // 如果找不到，则添加一个新的条目 (以防万一)
+                                chunkMD5List.push({chunk: chunk, md5: chunkMD5});
+                            }
+
+                            currentChunk++;
+                            uploadNextChunk();
+                        } else {
+                            displayResult(`分片 ${chunk} 上传失败: 缺少 fileKey`);
+                        }
+                    } catch (e) {
+                        displayResult(`解析服务器响应时出错 (分片 ${chunk}): ` + e);
+                    }
+                } else {
+                    if (retryCount < 3) {
+                        console.log(`分片 ${chunk} 上传失败，状态码: ${xhr.status}, 重试 ${retryCount + 1} 次.`);
+                        uploadChunk(chunk, retryCount + 1);
+                    } else {
+                        displayResult(`分片 ${chunk} 上传失败，状态码: ${xhr.status}, 已达到最大重试次数.`);
+                    }
+                }
+            };
+
+            xhr.onerror = function () {
+                if (retryCount < 3) {
+                    console.log(`由于网络错误，分片 ${chunk} 上传失败, 重试 ${retryCount + 1} 次.`);
+                    uploadChunk(chunk, retryCount + 1);
+                } else {
+                    displayResult(`由于网络错误，分片 ${chunk} 上传失败，已达到最大重试次数.`);
+                }
+            };
+
+            xhr.send(formData);
+        });
+    }
+
+
+    function calculateMD5(file, callback) {
+        const spark = new SparkMD5.ArrayBuffer();
+        const fileReader = new FileReader();
+
+        fileReader.onload = function (e) {
+            spark.append(e.target.result);
+            callback(spark.end());
+        };
+
+        fileReader.onerror = function () {
+            console.warn('MD5 计算出错');
+        };
+        fileReader.readAsArrayBuffer(file);
+    }
+
+    function updateProgressBar(percentage) {
+        const progressBar = document.getElementById('progressBar');
+        progressBar.style.width = percentage + '%';
+    }
+
+    function downloadMD5List() {
+        if (chunkMD5List.length === 0) {
+            displayResult("请先上传文件!");
+            return;
+        }
+
+        let text = "";
+        chunkMD5List.forEach(item => {
+            text += `${item.md5} # ${fileNameWithoutExtension}_chunk_${item.chunk}\n`;
+        });
+
+        download("chunk_md5.txt", text);
+    }
+
+    function download(filename, text) {
+        const element = document.createElement('a');
+        element.setAttribute('href', 'data:text/plain;charset=utf-8,' + encodeURIComponent(text));
+        element.setAttribute('download', filename);
+
+        element.style.display = 'none';
+        document.body.appendChild(element);
+
+        element.click();
+
+        document.body.removeChild(element);
+    }
+
+    // 本地保存（占位函数）
+    function saveFileLocally(fileKey, fileName) {
+        displayResult('暂不支持直接保存到本地。 你需要一个服务器来处理文件下载。 文件Key: ' + fileKey + ' 文件名: ' + fileName);
+    }
+
+    // 显示结果信息
+    function displayResult(message) {
+        document.getElementById('uploadResult').innerHTML = message;
+    }
+</script>
+
+</body>
+</html>
