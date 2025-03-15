@@ -1,0 +1,6 @@
+33337586c5a43d931f555827b4e93e19 # VSCodeUserSetup-x64-1.98.2_chunk_0
+cb0ed9f83528ab43cf1c613fd9a27310 # VSCodeUserSetup-x64-1.98.2_chunk_1
+5f1117878236d9d7c7e9101b4cb9288b # VSCodeUserSetup-x64-1.98.2_chunk_2
+8b0d3dab9885fd864728ccc0b0a66719 # VSCodeUserSetup-x64-1.98.2_chunk_3
+438e3d403a53f886f8d7f8d79318946b # VSCodeUserSetup-x64-1.98.2_chunk_4
+22580cb5a6959108d7d8239cc9bb2920 # VSCodeUserSetup-x64-1.98.2_chunk_5
