@@ -107,7 +107,25 @@
                     </div>
                     <div>
                         <button @click="editToken(tokenItem)" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline ml-2">修改信息</button>
-                        <button @click="useToken(tokenItem)" class="bg-purple-500 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline ml-2">使用此 Token</button>
+                        <button
+                            @click="useToken(tokenItem)"
+                            :class="[
+                                'bg-purple-500',
+                                'hover:bg-purple-700',
+                                'text-white',
+                                'font-bold',
+                                'py-2',
+                                'px-4',
+                                'rounded',
+                                'focus:outline-none',
+                                'focus:shadow-outline',
+                                'ml-2',
+                                {'bg-green-500 hover:bg-green-700': selectedToken === tokenItem.token}
+                            ]"
+                        >
+                            {{ selectedToken === tokenItem.token ? '已选择' : '使用此 Token' }}
+                        </button>
+                        <button @click="setDefaultToken(tokenItem)" class="bg-yellow-500 hover:bg-yellow-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline ml-2">设为默认</button>
                         <button @click="removeToken(tokenItem.token)" class="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline ml-2">删除</button>
                     </div>
                 </div>
@@ -168,7 +186,7 @@
             <div class="flex flex-wrap">
                 <div v-for="item in displayedStickerItems(pack)" :key="item.id" class="w-24 h-24 m-2 relative">
                     <img :src="imageUrl(item.url)" alt="Sticker" class="w-full h-full object-cover rounded cursor-pointer" @click="showStickerDetails(item)" />
-                    <input type="checkbox" v-model="selectedStickers" :value="item.id" class="absolute top-1 right-1">
+                    <input type="checkbox" v-model="selectedStickers" :value="item.id" class="absolute top-1 right-1 w-6 h-6">
                 </div>
             </div>
             <!-- 表情包内部的分页 -->
@@ -176,7 +194,9 @@
                 <button :disabled="currentPackPage(pack) === 1" @click="prevPackPage(pack)" class="bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold py-2 px-4 rounded disabled:opacity-50 disabled:cursor-not-allowed">上一页</button>
                 <span class="mx-2">第 {{ currentPackPage(pack) }} / {{ totalPackPages(pack) }} 页</span>
                 <button :disabled="currentPackPage(pack) === totalPackPages(pack)" @click="nextPackPage(pack)" class="bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold py-2 px-4 rounded disabled:opacity-50 disabled:cursor-not-allowed">下一页</button>
-                <span class="mx-2">({{ displayedStickerItems(pack).length }} / {{ pack.stickerItems.length }} 个)</span>
+                <span class="mx-2">{{ packPageStartIndex(pack) }}-{{ packPageEndIndex(pack) }} / {{ pack.stickerItems.length }}</span>
+                <label for="packPageSizeInput" class="ml-4 text-gray-700 text-sm font-bold">每页显示:</label>
+                <input type="number" id="packPageSizeInput" v-model.number="packPageSizes[pack.id]" @change="resetPackPage(pack)" class="shadow appearance-none border rounded py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline ml-1 w-20" min="1">
             </div>
         </div>
     </div>
@@ -266,6 +286,9 @@
 
             const showAddTokenModal = ref(false);
             const selectedStickersExpanded = ref(false); // 默认收起已选择表情
+
+            // 默认 Token
+            const defaultToken = ref(localStorage.getItem('defaultToken') || '');
 
             // 计算最终使用的 URL 前缀，如果用户填写了，就用用户的，否则用默认的
             const finalUrlPrefix = computed(() => {
@@ -385,6 +408,27 @@
                 return pack.stickerItems.slice(startIndex, endIndex);
             };
 
+            // 计算当前分页的开始和结束索引
+            const packPageStartIndex = (pack) => {
+                const packId = pack.id;
+                const packSize = packPageSizes.value[packId] || 20; // 默认每页 20 个
+                const currentPage = currentPackPage(pack);
+                return (currentPage - 1) * packSize + 1;
+            };
+
+            const packPageEndIndex = (pack) => {
+                const packId = pack.id;
+                const packSize = packPageSizes.value[packId] || 20; // 默认每页 20 个
+                const currentPage = currentPackPage(pack);
+                const endIndex = currentPage * packSize;
+                return Math.min(endIndex, pack.stickerItems.length);
+            };
+
+            // 重置表情包分页
+            const resetPackPage = (pack) => {
+                packCurrentPages.value[pack.id] = 1; // 重置为第一页
+            };
+
             // 顶层分页
             const nextPage = () => {
                 if (currentPage.value < totalPages.value) {
@@ -461,6 +505,16 @@
                 selectedTokenForEdit.value = null;
             };
 
+            // 设置默认 Token
+            const setDefaultToken = (tokenItem) => {
+                if (defaultToken.value !== tokenItem.token) {
+                    defaultToken.value = tokenItem.token;
+                    localStorage.setItem('defaultToken', tokenItem.token);
+                    // 同时更新 selectedToken
+                    selectedToken.value = tokenItem.token;
+                    alert(`Token ${tokenItem.name} 已设置为默认 Token`);
+                }
+            };
 
             // 折叠/展开已选择的表情
             const toggleSelectedStickers = () => {
@@ -572,6 +626,13 @@
                 tokens.value.forEach(token => {
                     remarkEdits.value[token.token] = token.remark || '';
                 });
+
+                // 尝试从 localStorage 加载默认 Token
+                const storedDefaultToken = localStorage.getItem('defaultToken');
+                if (storedDefaultToken) {
+                    selectedToken.value = storedDefaultToken;  // 设置 selectedToken 的值
+                    defaultToken.value = storedDefaultToken;  // 设置 defaultToken 的值
+                }
             });
 
             return {
@@ -625,6 +686,11 @@
                 currentPackPage,
                 totalPackPages,
                 displayedStickerItems,
+                packPageStartIndex,
+                packPageEndIndex,
+                resetPackPage,
+                defaultToken,
+                setDefaultToken,
             }
         }
     }).mount('#app');
