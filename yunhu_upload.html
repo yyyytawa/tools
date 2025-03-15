@@ -2,7 +2,6 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <meta charset="UTF-8">
     <title>云湖文件床上传文件工具</title>
     <style>
         body {
@@ -130,54 +129,68 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/spark-md5/3.0.2/spark-md5.min.js"></script>
 <script>
+    let rawToken = ''; // 用于存储原始 Token
+
     // 页面加载时，从 localStorage 恢复 Token
     window.onload = function () {
         const apiType = document.getElementById('apiType').value;
         restoreToken(apiType);
-
-        //  显示遮蔽后的 Token
-        maskTokenDisplay();
+        maskTokenDisplay(); // 显示遮蔽后的 Token
     };
 
     // 监听 API 类型改变，自动读取相应的 Token
     document.getElementById('apiType').addEventListener('change', function () {
         const apiType = this.value;
         restoreToken(apiType);
-
-        //  显示遮蔽后的 Token
-        maskTokenDisplay();
+        maskTokenDisplay(); // 显示遮蔽后的 Token
     });
 
     // 监听 Token 输入，自动保存到 localStorage
     document.getElementById('token').addEventListener('input', function () {
         const apiType = document.getElementById('apiType').value;
-        saveToken(apiType, this.value);
-
-        //  显示遮蔽后的 Token
-        maskTokenDisplay();
+        rawToken = this.value; // 保存原始 Token
+        saveToken(apiType, rawToken);
+        maskTokenDisplay(); // 显示遮蔽后的 Token
     });
 
     // 清除 Token
     function clearToken() {
         const apiType = document.getElementById('apiType').value;
         localStorage.removeItem(`uploadToken_${apiType}`);
+        rawToken = ''; // 清除原始 Token
         document.getElementById('token').value = '';
-
-        //  显示遮蔽后的 Token
-        maskTokenDisplay();
+        maskTokenDisplay(); // 显示遮蔽后的 Token
     }
 
     // 从 localStorage 恢复 Token
     function restoreToken(apiType) {
         const savedToken = localStorage.getItem(`uploadToken_${apiType}`);
         if (savedToken) {
-            document.getElementById('token').value = savedToken;
+            rawToken = savedToken; // 恢复原始 Token
+        } else {
+            rawToken = ''; //  确保 rawToken 初始化
         }
+        maskTokenDisplay(); //  显示
     }
 
     // 保存 Token 到 localStorage
     function saveToken(apiType, token) {
         localStorage.setItem(`uploadToken_${apiType}`, token);
+    }
+
+    // **修改: 遮蔽 Token 显示，只修改显示效果**
+    function maskTokenDisplay() {
+        const tokenInput = document.getElementById('token');
+        const token = rawToken; // 使用 rawToken
+        if (!token) {
+            tokenInput.value = ''; // 清空输入框
+            return;
+        }
+
+        const visibleLength = 4;
+        const maskedLength = token.length - 2 * visibleLength;
+        const maskedToken = token.substring(0, visibleLength) + '*'.repeat(maskedLength) + token.substring(token.length - visibleLength);
+        tokenInput.value = maskedToken; //  修改显示值
     }
 
 
@@ -253,7 +266,8 @@
     }
 
     function uploadFileInChunks() {
-        const token = document.getElementById('token').value;
+        const token = rawToken;  // 使用 rawToken
+        console.log("uploadFileInChunks 使用的 Token:", token);
 
         if (!token) {
             displayResult('请先输入 Token。');
@@ -451,7 +465,8 @@
                     });
             } else {
                 // 使用 机器人API (原来的方式)
-                uploadUrl = 'https://chat-go.jwzhd.com/open-apis/v1/file/upload?token=' + document.getElementById('token').value;
+                const token = rawToken; // 使用 rawToken
+                let uploadUrl = 'https://chat-go.jwzhd.com/open-apis/v1/file/upload?token=' + token;
                 const xhr = new XMLHttpRequest();  //  在这里创建 xhr 对象
                 xhr.open('POST', uploadUrl, true);
 
@@ -524,6 +539,8 @@
                         displayResult(`分片 ${chunk} 上传失败，已达到最大重试次数.`);
                     }
                 };
+
+                formData.append('file', chunkFile, file.name); //  Use the original filename
                 xhr.send(formData);
             }
         };
@@ -538,7 +555,8 @@
 
     //  获取用户上传token 和 七牛云 host
     async function getUserUploadToken(chunkFile, chunk, chunkMD5, formData) {
-        const token = document.getElementById('token').value;
+        const token = rawToken;  // 使用 rawToken
+        console.log("getUserUploadToken 使用的 Token:", token);
         const utokenUrl = 'https://chat-go.jwzhd.com/v1/misc/qiniu-token2';
 
         try {
@@ -615,6 +633,9 @@
             return;
         }
 
+      // Sort chunkMD5List by chunk index before generating the MD5 list
+        chunkMD5List.sort((a, b) => a.chunk - b.chunk);
+
         let text = "";
         chunkMD5List.forEach(item => {
             //  **修改4: 使用原始文件名 + "_chunk_" + 分片号**
@@ -656,20 +677,6 @@
         document.getElementById('uploadResult').innerHTML = message;
     }
 
-    //  **新增: 遮蔽 Token 显示**
-    function maskTokenDisplay() {
-        const tokenInput = document.getElementById('token');
-        const token = tokenInput.value;
-
-        if (!token) {
-            return;
-        }
-
-        const visibleLength = 4;  //  显示前后各 4 位
-        const maskedLength = token.length - 2 * visibleLength;
-        const maskedToken = token.substring(0, visibleLength) + '*'.repeat(maskedLength) + token.substring(token.length - visibleLength);
-        tokenInput.value = maskedToken;
-    }
 </script>
 
 </body>
