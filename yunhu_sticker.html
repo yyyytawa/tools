@@ -1,0 +1,633 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>云湖表情下载工具 (纯 HTML)</title>
+    <!-- 引入 Tailwind CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <!-- 引入 Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" integrity="sha512-9usAa10IRO0HhonpyAIVpjrylPvoDwiPUiKdWk5t3PyolY1cOd4DSE0Ga+ri4AuTroPR5aQvXU9xC6qOPnzFeg==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+    <!-- 引入 Vue 3 -->
+    <script src="https://unpkg.com/vue@3.2.45/dist/vue.global.js"></script>
+    <!-- 引入 Axios -->
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <!-- 引入 StreamSaver.js -->
+    <script src="https://cdn.jsdelivr.net/npm/streamsaver@2.0.6/StreamSaver.js"></script>
+    <!-- 引入 JSZip -->
+    <script src="https://cdn.jsdelivr.net/npm/jszip@3.7.1/dist/jszip.min.js"></script>
+    <!-- 引入 FileSaver.js (StreamSaver 的依赖) -->
+    <script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
+
+    <style>
+        .pack-details-button {
+            background-color: transparent;
+            border: 1px solid #999;
+            color: #333;
+            padding: 5px 10px;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+        }
+
+        .pack-details-button:hover {
+            background-color: #f0f0f0;
+            color: #007bff;
+            border-color: #007bff;
+        }
+
+        /* 修复已选择表情变形 */
+        .selected-sticker-image {
+            max-width: 100px; /* 可以根据需要调整大小 */
+            max-height: 100px;
+            object-fit: contain; /* 保持图片比例 */
+        }
+
+        /* 添加展开/折叠动画 */
+        .expand-transition {
+            transition: height 0.3s ease-in-out, padding 0.3s ease-in-out;
+            overflow: hidden;
+        }
+
+        /* 弹窗动画 */
+        .modal-enter-active {
+            transition: opacity 0.4s ease; /* 减慢动画速度 */
+        }
+
+        .modal-leave-active {
+            transition: opacity 0.3s ease;
+        }
+
+        .modal-enter-from,
+        .modal-leave-to {
+            opacity: 0;
+        }
+    </style>
+</head>
+<body class="bg-gray-100">
+<div id="app" class="container mx-auto p-4">
+    <h1 class="text-2xl font-semibold mb-4">云湖表情下载工具 (纯 HTML)</h1>
+
+    <!-- Token 管理 -->
+    <div class="bg-white shadow rounded p-4 mb-4">
+        <h2 class="text-lg font-semibold mb-2">Token 管理</h2>
+        <button @click="showAddTokenModal = true" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline mb-2">新增 Token</button>
+
+        <!-- 新增 Token 弹窗 -->
+        <div v-if="showAddTokenModal" class="fixed top-0 left-0 w-full h-full bg-gray-500 bg-opacity-75 flex items-center justify-center modal-enter-active modal-leave-active">
+            <div class="bg-white rounded shadow p-4">
+                <h4 class="text-lg font-semibold mb-2">新增 Token</h4>
+                <div class="mb-2">
+                    <label for="tokenInput" class="block text-gray-700 text-sm font-bold mb-1">Token:</label>
+                    <input type="text" id="tokenInput" v-model="newToken.token" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline">
+                </div>
+                <div class="mb-2">
+                    <label for="tokenName" class="block text-gray-700 text-sm font-bold mb-1">名称:</label>
+                    <input type="text" id="tokenName" v-model="newToken.name" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline">
+                </div>
+                <div class="mb-2">
+                    <label for="tokenRemark" class="block text-gray-700 text-sm font-bold mb-1">备注 (可选):</label>
+                    <input type="text" id="tokenRemark" v-model="newToken.remark" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline">
+                </div>
+                <div class="flex justify-end">
+                    <button @click="addToken" class="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline ml-2">保存</button>
+                    <button @click="showAddTokenModal = false; resetNewToken()" class="bg-gray-300 hover:bg-gray-400 text-gray-700 font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline ml-2">取消</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="mt-4">
+            <label class="block text-gray-700 text-sm font-bold mb-1">已保存的 Token:</label>
+            <div v-for="tokenItem in tokens" :key="tokenItem.token" class="mb-2">
+                <div class="flex items-center justify-between">
+                    <div class="cursor-pointer" @click="toggleTokenDetails(tokenItem.token)">
+                        {{ tokenItem.name }} ({{ tokenItem.remark }})
+                        <span v-if="expandedTokens.has(tokenItem.token)"> [收起]</span>
+                        <span v-else> [展开]</span>
+                    </div>
+                    <div>
+                        <button @click="editToken(tokenItem)" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline ml-2">修改信息</button>
+                        <button @click="useToken(tokenItem)" class="bg-purple-500 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline ml-2">使用此 Token</button>
+                        <button @click="removeToken(tokenItem.token)" class="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline ml-2">删除</button>
+                    </div>
+                </div>
+                <div v-if="expandedTokens.has(tokenItem.token)" class="mt-2 p-4 bg-gray-100 rounded expand-transition">
+                    <p>Token: {{ tokenItem.token }}</p>
+                    <p>备注: {{ tokenItem.remark }}</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 修改 Token 信息弹窗 -->
+    <div v-if="selectedTokenForEdit" class="fixed top-0 left-0 w-full h-full bg-gray-500 bg-opacity-75 flex items-center justify-center modal-enter-active modal-leave-active">
+        <div class="bg-white rounded shadow p-4">
+            <h4 class="text-lg font-semibold mb-2">修改 Token 信息</h4>
+            <div class="mb-2">
+                <label for="editTokenValue" class="block text-gray-700 text-sm font-bold mb-1">Token:</label>
+                <input type="text" id="editTokenValue" v-model="selectedTokenForEdit.token" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline">
+            </div>
+            <div class="mb-2">
+                <label for="editTokenRemark" class="block text-gray-700 text-sm font-bold mb-1">备注:</label>
+                <input type="text" id="editTokenRemark" v-model="selectedTokenForEdit.remark" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline">
+            </div>
+            <div class="flex justify-end">
+                <button @click="saveTokenEdit" class="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline ml-2">保存</button>
+                <button @click="cancelTokenEdit" class="bg-gray-300 hover:bg-gray-400 text-gray-700 font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline ml-2">取消</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- URL 前缀输入框 -->
+    <div class="mb-4">
+        <label for="urlPrefix" class="block text-gray-700 text-sm font-bold mb-1">URL 前缀 (不填默认为 chat-img.jwznb.com):</label>
+        <input type="text" id="urlPrefix" v-model="urlPrefix" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline">
+    </div>
+
+    <!-- Fetch 按钮和状态显示 -->
+    <div class="mb-4">
+        <button @click="fetchData" class="bg-purple-500 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">Fetch</button>
+        <span class="ml-2">状态: {{ status }}</span>
+    </div>
+
+    <!-- 表情列表 -->
+    <div v-for="pack in displayedPacks" :key="pack.id" class="mb-4 bg-white shadow rounded p-4">
+        <div class="flex items-center justify-between">
+            <h3 class="text-md font-semibold cursor-pointer" @click="toggleExpand(pack.id)">
+                <span class="mr-2">{{ pack.name }}</span>
+                <span class="text-gray-500">({{ pack.stickerItems.length }} 个表情)</span>
+            </h3>
+            <div>
+                <button @click="showPackDetails(pack)" class="pack-details-button focus:outline-none">
+                    <i class="fas fa-info-circle mr-1"></i>详情
+                </button>
+                <input type="checkbox" v-model="selectedPacks[pack.id]" @change="toggleSelectPack(pack.id)" class="ml-2">
+            </div>
+        </div>
+        <div v-if="expandedPacks.has(pack.id)" class="mt-2 expand-transition">
+            <div class="flex flex-wrap">
+                <div v-for="item in displayedStickerItems(pack)" :key="item.id" class="w-24 h-24 m-2 relative">
+                    <img :src="imageUrl(item.url)" alt="Sticker" class="w-full h-full object-cover rounded cursor-pointer" @click="showStickerDetails(item)" />
+                    <input type="checkbox" v-model="selectedStickers" :value="item.id" class="absolute top-1 right-1">
+                </div>
+            </div>
+            <!-- 表情包内部的分页 -->
+            <div class="flex items-center justify-center mt-4">
+                <button :disabled="currentPackPage(pack) === 1" @click="prevPackPage(pack)" class="bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold py-2 px-4 rounded disabled:opacity-50 disabled:cursor-not-allowed">上一页</button>
+                <span class="mx-2">第 {{ currentPackPage(pack) }} / {{ totalPackPages(pack) }} 页</span>
+                <button :disabled="currentPackPage(pack) === totalPackPages(pack)" @click="nextPackPage(pack)" class="bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold py-2 px-4 rounded disabled:opacity-50 disabled:cursor-not-allowed">下一页</button>
+                <span class="mx-2">({{ displayedStickerItems(pack).length }} / {{ pack.stickerItems.length }} 个)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- 分页 -->
+    <div class="flex items-center justify-center mt-4">
+        <button :disabled="currentPage === 1" @click="prevPage" class="bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold py-2 px-4 rounded disabled:opacity-50 disabled:cursor-not-allowed">上一页</button>
+        <span class="mx-2">第 {{ currentPage }} / {{ totalPages }} 页</span>
+        <button :disabled="currentPage === totalPages" @click="nextPage" class="bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold py-2 px-4 rounded disabled:opacity-50 disabled:cursor-not-allowed">下一页</button>
+
+        <label for="pageSizeInput" class="ml-4 text-gray-700 text-sm font-bold">每页显示:</label>
+        <input type="number" id="pageSizeInput" v-model.number="pageSize" @change="resetCurrentPage" class="shadow appearance-none border rounded py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline ml-1 w-20" value="20">
+    </div>
+
+    <!-- 已选择表情预览 (可折叠) -->
+    <div v-if="stickerUrls.length > 0" class="mt-4">
+        <div class="flex items-center justify-between cursor-pointer" @click="toggleSelectedStickers">
+            <h2 class="text-lg font-semibold mb-2">已选择表情预览 ({{ stickerUrls.length }}个)</h2>
+            <span>{{ selectedStickersExpanded ? '[收起]' : '[展开]' }}</span>
+        </div>
+        <div v-if="selectedStickersExpanded" class="expand-transition">
+            <div class="flex flex-wrap">
+                <img v-for="url in stickerUrls" :key="url" :src="url" alt="Selected Sticker" class="m-2 rounded selected-sticker-image" />
+            </div>
+        </div>
+    </div>
+
+    <!-- 表情包详细信息 -->
+    <div v-if="selectedPackDetails" class="fixed top-0 left-0 w-full h-full bg-gray-500 bg-opacity-75 flex items-center justify-center modal-enter-active modal-leave-active">
+        <div class="bg-white rounded shadow p-4">
+            <h4 class="text-lg font-semibold mb-2">表情包详情</h4>
+            <p>ID: {{ selectedPackDetails.id }}</p>
+            <p>名称: {{ selectedPackDetails.name }}</p>
+            <p>创建者 UID: {{ selectedPackDetails.createBy }}</p>
+            <p>创建时间: {{ new Date(selectedPackDetails.createTime * 1000).toLocaleString() }}</p>
+            <p>更新时间: {{ new Date(selectedPackDetails.updateTime * 1000).toLocaleString() }}</p>
+            <button @click="selectedPackDetails = null" class="bg-gray-300 hover:bg-gray-400 text-gray-700 font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline mt-4">关闭</button>
+        </div>
+    </div>
+
+    <!-- 表情详细信息 -->
+    <div v-if="selectedStickerDetails" class="fixed top-0 left-0 w-full h-full bg-gray-500 bg-opacity-75 flex items-center justify-center modal-enter-active modal-leave-active">
+        <div class="bg-white rounded shadow p-4">
+            <h4 class="text-lg font-semibold mb-2">表情详情</h4>
+            <img :src="imageUrl(selectedStickerDetails.url)" alt="Sticker" class="w-32 h-32 object-cover rounded mb-2" />
+            <p>名称: {{ selectedStickerDetails.name }}</p>
+            <p>创建者 UID: {{ selectedStickerDetails.createBy }}</p>
+            <p>创建时间: {{ new Date(selectedStickerDetails.createTime * 1000).toLocaleString() }}</p>
+            <button @click="selectedStickerDetails = null" class="bg-gray-300 hover:bg-gray-400 text-gray-700 font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline mt-4">关闭</button>
+        </div>
+    </div>
+
+    <!-- 下载按钮 -->
+    <button @click="downloadSelected" class="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline mt-4">打包下载已选表情</button>
+</div>
+
+<script>
+    const { createApp, ref, computed, onMounted } = Vue;
+
+    createApp({
+        setup() {
+            // --- 状态管理 ---
+            const tokens = ref(JSON.parse(localStorage.getItem('tokens') || '[]'));
+            const selectedToken = ref('');
+            const currentToken = computed(() => {
+                return selectedToken.value ? tokens.value.find(token => token.token === selectedToken.value) : null;
+            });
+
+            const status = ref('等待操作');
+            const stickerPacks = ref([]); // 表情包
+            const selectedStickers = ref([]); // 选择的表情
+            const selectedPackDetails = ref(null);
+            const selectedStickerDetails = ref(null);
+            const expandedPacks = ref(new Set()); // 展开的表情包
+            const expandedTokens = ref(new Set());
+            const selectedPacks = ref({});
+            const remarkEdits = ref({});
+            const newToken = ref({ token: '', name: '', remark: '' });
+            const urlPrefix = ref(''); // 用户填写的 URL 前缀
+            const selectedTokenForEdit = ref(null);
+
+            // 分页相关的变量
+            const pageSize = ref(20); // 每页显示的表情包数量, 默认20
+            const currentPage = ref(1);
+            const packPageSizes = ref({}); // 用于保存每个表情包的内部分页大小
+            const packCurrentPages = ref({}); // 用于保存每个表情包的当前页码
+
+            const showAddTokenModal = ref(false);
+            const selectedStickersExpanded = ref(false); // 默认收起已选择表情
+
+            // 计算最终使用的 URL 前缀，如果用户填写了，就用用户的，否则用默认的
+            const finalUrlPrefix = computed(() => {
+                return urlPrefix.value || 'https://chat-img.jwznb.com';
+            });
+
+            const totalPages = computed(() => {
+                return Math.ceil(stickerPacks.value.length / pageSize.value);
+            });
+
+            const displayedPacks = computed(() => {
+                const startIndex = (currentPage.value - 1) * pageSize.value;
+                const endIndex = startIndex + pageSize.value;
+                return stickerPacks.value.slice(startIndex, endIndex);
+            });
+
+            // 新增 Token
+            const addToken = () => {
+                if (newToken.value.token && newToken.value.name) {
+                    tokens.value.push(newToken.value);
+                    localStorage.setItem('tokens', JSON.stringify(tokens.value)); // 保存到 localStorage
+                    showAddTokenModal.value = false;
+                    resetNewToken(); // 清空输入框
+                } else {
+                    alert('Token 和名称不能为空');
+                }
+            };
+
+            const resetNewToken = () => {
+                newToken.value = { token: '', name: '', remark: '' };
+            };
+
+            const removeToken = (token) => {
+                if (confirm(`确定要删除 Token: ${token} 吗?`)) {
+                    tokens.value = tokens.value.filter(t => t.token !== token);
+                    localStorage.setItem('tokens', JSON.stringify(tokens.value)); // 保存到 localStorage
+                    selectedToken.value = ''; // 清空选择
+                }
+            };
+
+            const updateRemark = (token, remark) => {
+                const tokenItem = tokens.value.find(t => t.token === token);
+                if (tokenItem) {
+                    tokenItem.remark = remark;
+                    localStorage.setItem('tokens', JSON.stringify(tokens.value)); // 保存到 localStorage
+                    remarkEdits.value[token] = remark; // 更新 remarkEdits
+                }
+            };
+
+            const toggleExpand = (packId) => {
+                if (expandedPacks.value.has(packId)) {
+                    expandedPacks.value.delete(packId);
+                } else {
+                    expandedPacks.value.add(packId);
+                }
+            };
+
+            const imageUrl = (url) => {
+                if (url.startsWith('http://') || url.startsWith('https://')) {
+                    // 如果 URL 已经包含协议，则直接返回
+                    return url;
+                } else {
+                    // 否则，添加 URL 前缀
+                    return `${finalUrlPrefix.value}/${url}`;
+                }
+            };
+
+            const showStickerDetails = (item) => {
+                selectedStickerDetails.value = item;
+            };
+
+            const showPackDetails = (pack) => {
+                selectedPackDetails.value = pack;
+            };
+
+            // 表情包的分页
+            const nextPackPage = (pack) => {
+                const packId = pack.id;
+                if (!packCurrentPages.value[packId]) {
+                    packCurrentPages.value[packId] = 1;
+                }
+                if (packCurrentPages.value[packId] < totalPackPages(pack)) {
+                    packCurrentPages.value[packId]++;
+                }
+            };
+
+            const prevPackPage = (pack) => {
+                const packId = pack.id;
+                if (!packCurrentPages.value[packId]) {
+                    packCurrentPages.value[packId] = 1;
+                }
+                if (packCurrentPages.value[packId] > 1) {
+                    packCurrentPages.value[packId]--;
+                }
+            };
+
+            const currentPackPage = (pack) => {
+                const packId = pack.id;
+                if (!packCurrentPages.value[packId]) {
+                    packCurrentPages.value[packId] = 1;
+                }
+                return packCurrentPages.value[packId];
+            };
+
+            const totalPackPages = (pack) => {
+                const packId = pack.id;
+                const packSize = packPageSizes.value[packId] || 20; // 默认每页 20 个
+                return Math.ceil(pack.stickerItems.length / packSize);
+            };
+
+            const displayedStickerItems = (pack) => {
+                const packId = pack.id;
+                const packSize = packPageSizes.value[packId] || 20; // 默认每页 20 个
+                const currentPage = currentPackPage(pack);
+                const startIndex = (currentPage - 1) * packSize;
+                const endIndex = startIndex + packSize;
+                return pack.stickerItems.slice(startIndex, endIndex);
+            };
+
+            // 顶层分页
+            const nextPage = () => {
+                if (currentPage.value < totalPages.value) {
+                    currentPage.value++;
+                }
+            };
+
+            const prevPage = () => {
+                if (currentPage.value > 1) {
+                    currentPage.value--;
+                }
+            };
+
+            const resetCurrentPage = () => {
+                currentPage.value = 1;
+            };
+
+            const toggleSelectPack = (packId) => {
+                // 如果当前表情包被选中，则将其所有表情的 ID 添加到 store.selectedStickerIds
+                if (selectedPacks.value[packId]) {
+                    const pack = stickerPacks.value.find(p => p.id === packId);
+                    if (pack) {
+                        pack.stickerItems.forEach(item => {
+                            if (!selectedStickers.value.includes(item.id)) {
+                                selectedStickers.value.push(item.id);
+                            }
+                        });
+                    }
+                } else {
+                    // 如果当前表情包未被选中，则将其所有表情的 ID 从 store.selectedStickerIds 中移除
+                    const pack = stickerPacks.value.find(p => p.id === packId);
+                    if (pack) {
+                        pack.stickerItems.forEach(item => {
+                            selectedStickers.value = selectedStickers.value.filter(id => id !== item.id);
+                        });
+                    }
+                }
+            };
+
+            const stickerUrls = computed(() => {
+                return stickerPacks.value
+                    .flatMap(pack => pack.stickerItems)
+                    .filter(item => selectedStickers.value.includes(item.id))
+                    .map(item => imageUrl(item.url)); // 使用 finalUrlPrefix
+            });
+
+            // Token 相关函数
+            const toggleTokenDetails = (token) => {
+                if (expandedTokens.value.has(token)) {
+                    expandedTokens.value.delete(token);
+                } else {
+                    expandedTokens.value.add(token);
+                }
+            };
+
+            const useToken = (tokenItem) => {
+                selectedToken.value = tokenItem.token;
+            };
+
+            const editToken = (tokenItem) => {
+                selectedTokenForEdit.value = { ...tokenItem }; // 创建一个副本，避免直接修改原数据
+            };
+
+            const saveTokenEdit = () => {
+                const index = tokens.value.findIndex(t => t.token === selectedTokenForEdit.value.token);
+                if (index !== -1) {
+                    tokens.value[index] = { ...selectedTokenForEdit.value };
+                    localStorage.setItem('tokens', JSON.stringify(tokens.value)); // 保存到 localStorage
+                }
+                cancelTokenEdit();
+            };
+
+            const cancelTokenEdit = () => {
+                selectedTokenForEdit.value = null;
+            };
+
+
+            // 折叠/展开已选择的表情
+            const toggleSelectedStickers = () => {
+                selectedStickersExpanded.value = !selectedStickersExpanded.value;
+            };
+
+            // --- API 相关 ---
+            const API_BASE_URL = 'https://chat-go.jwzhd.com'; // 替换为你的实际 API 地址
+
+            const fetchStickerPacks = async (token) => {
+                status.value = '获取中...';
+                try {
+                    const response = await axios.post(`${API_BASE_URL}/v1/sticker/list`, {}, {
+                        headers: {
+                            'token': token,
+                        },
+                    });
+                    if (response.data.code === 1) {
+                        status.value = '获取成功';
+                        stickerPacks.value = response.data.data.stickerPacks;
+
+                        // 初始化每个表情包的内部分页信息
+                        stickerPacks.value.forEach(pack => {
+                            const packId = pack.id;
+                            if (!packPageSizes.value[packId]) {
+                                packPageSizes.value[packId] = 20; // 默认值
+                            }
+                            if (!packCurrentPages.value[packId]) {
+                                packCurrentPages.value[packId] = 1;
+                            }
+                        });
+
+                        // 确保 imageUrl 使用 finalUrlPrefix
+                        stickerPacks.value.forEach(pack => {
+                            pack.stickerItems.forEach(item => {
+                                item.url = imageUrl(item.url);
+                            });
+                        });
+                        return response.data;
+                    } else {
+                        status.value = `Error: ${response.data.msg} (Code: ${response.data.code})`;
+                        throw new Error(response.data.msg);
+                    }
+                } catch (error) {
+                    status.value = `Error: ${error.message}`;
+                    throw error;
+                }
+            };
+
+            const downloadImage = async (url) => {
+                const response = await axios.get(imageUrl(url), { responseType: 'blob' });
+                return response.data;
+            };
+
+            const fetchData = async () => {
+                try {
+                    if (!currentToken.value) {
+                        status.value = '请选择或输入 Token';
+                        return;
+                    }
+                    await fetchStickerPacks(currentToken.value.token);
+                } catch (error) {
+                    console.error('Failed to fetch sticker packs:', error);
+                }
+            };
+
+            const downloadSelected = async () => {
+                if (selectedStickers.value.length === 0) {
+                    alert('请选择要下载的表情');
+                    return;
+                }
+
+                status.value = '正在准备下载...';
+
+                const zip = new JSZip();
+
+                for (const pack of stickerPacks.value) {
+                    // 只在当前表情包有选择的表情时才创建文件夹
+                    const selectedItemsInPack = pack.stickerItems.filter(item => selectedStickers.value.includes(item.id));
+                    if (selectedItemsInPack.length > 0) {
+                        const packFolder = zip.folder(pack.name);
+                        for (const item of selectedItemsInPack) {
+                            try {
+                                status.value = `正在下载: ${item.name}`;
+                                const imageBlob = await downloadImage(item.url);
+                                // 获取文件名和扩展名
+                                const filename = item.name;
+                                const fileExtension = item.url.substring(item.url.lastIndexOf('.'));
+                                packFolder.file(`${filename}${fileExtension}`, imageBlob);
+                            } catch (error) {
+                                console.error(`Failed to download image ${item.name}:`, error);
+                                status.value = `下载 ${item.name} 失败`;
+                                continue;
+                            }
+                        }
+                    }
+                }
+
+                status.value = '正在生成 ZIP 文件...';
+                zip.generateAsync({ type: "blob" })
+                    .then(function(content) {
+                        // see FileSaver.js
+                        saveAs(content, "stickers.zip");
+                        status.value = '下载完成';
+                    });
+            };
+
+            onMounted(() => {
+                tokens.value.forEach(token => {
+                    remarkEdits.value[token.token] = token.remark || '';
+                });
+            });
+
+            return {
+                tokens,
+                currentToken,
+                status,
+                stickerPacks, // 表情包
+                selectedStickers, // 选择的表情
+                selectedPackDetails,
+                selectedStickerDetails,
+                expandedPacks, // 展开的表情包
+                expandedTokens,
+                selectedPacks,
+                remarkEdits,
+                selectedToken,
+                newToken,
+                urlPrefix,
+                selectedTokenForEdit,
+                finalUrlPrefix,
+                pageSize,
+                currentPage,
+                totalPages,
+                displayedPacks,
+                addToken,
+                resetNewToken,
+                removeToken,
+                updateRemark,
+                toggleExpand,
+                imageUrl,
+                showStickerDetails,
+                showPackDetails,
+                nextPage,
+                prevPage,
+                resetCurrentPage,
+                toggleSelectPack,
+                stickerUrls,
+                toggleTokenDetails,
+                useToken,
+                editToken,
+                saveTokenEdit,
+                cancelTokenEdit,
+                fetchData,
+                downloadSelected,
+                toggleSelectedStickers,
+                selectedStickersExpanded,
+                showAddTokenModal,
+                packPageSizes,
+                packCurrentPages,
+                nextPackPage,
+                prevPackPage,
+                currentPackPage,
+                totalPackPages,
+                displayedStickerItems,
+            }
+        }
+    }).mount('#app');
+</script>
+</body>
+</html>
