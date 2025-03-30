@@ -416,7 +416,7 @@
                                         currentChunk++;
                                         uploadNextChunk();
                                     } else {
-                                        displayResult(`分片 ${chunk} 上传失败: 缺少 key`);
+                                        displayResult(`分片 ${chunk} 上传失败: 缺少 key,请检查你的token/网络`);
                                     }
                                 } catch (e) {
                                     // 检查是否为 614 错误 (文件已存在)
@@ -500,7 +500,7 @@
                                 currentChunk++;
                                 uploadNextChunk();
                             } else {
-                                displayResult(`分片 ${chunk} 上传失败: 缺少 fileKey`);
+                                displayResult(`分片 ${chunk} 上传失败: 缺少 fileKey , 请检查你的token/网络`);
                             }
                         } catch (e) {
                              // 检查是否为 614 错误 (文件已存在)

@@ -582,45 +582,62 @@
             };
 
             const downloadSelected = async () => {
-                if (selectedStickers.value.length === 0) {
-                    alert('请选择要下载的表情');
-                    return;
-                }
+    if (selectedStickers.value.length === 0) {
+        alert('请选择要下载的表情');
+        return;
+    }
 
-                status.value = '正在准备下载...';
+    status.value = '正在准备下载...';
 
-                const zip = new JSZip();
+    const zip = new JSZip();
+    const usedPackNames = new Set(); // 跟踪已使用的表情包文件夹名
 
-                for (const pack of stickerPacks.value) {
-                    // 只在当前表情包有选择的表情时才创建文件夹
-                    const selectedItemsInPack = pack.stickerItems.filter(item => selectedStickers.value.includes(item.id));
-                    if (selectedItemsInPack.length > 0) {
-                        const packFolder = zip.folder(pack.name);
-                        for (const item of selectedItemsInPack) {
-                            try {
-                                status.value = `正在下载: ${item.name}`;
-                                const imageBlob = await downloadImage(item.url);
-                                // 获取文件名和扩展名
-                                const filename = item.name;
-                                const fileExtension = item.url.substring(item.url.lastIndexOf('.'));
-                                packFolder.file(`${filename}${fileExtension}`, imageBlob);
-                            } catch (error) {
-                                console.error(`Failed to download image ${item.name}:`, error);
-                                status.value = `下载 ${item.name} 失败`;
-                                continue;
-                            }
-                        }
+    for (const pack of stickerPacks.value) {
+        const selectedItemsInPack = pack.stickerItems.filter(item => selectedStickers.value.includes(item.id));
+        if (selectedItemsInPack.length > 0) {
+            // 处理表情包名称重复
+            let packFolderName = pack.name;
+            let packCounter = 1;
+            while (usedPackNames.has(packFolderName)) {
+                packFolderName = `${pack.name}_${packCounter++}`;
+            }
+            usedPackNames.add(packFolderName);
+
+            const packFolder = zip.folder(packFolderName);
+            const usedFileNames = new Set(); // 跟踪当前包内文件名
+
+            for (const item of selectedItemsInPack) {
+                try {
+                    status.value = `正在下载: ${item.name}`;
+                    const imageBlob = await downloadImage(item.url);
+                    
+                    // 处理文件名重复
+                    let filename = item.name;
+                    const ext = item.url.substring(item.url.lastIndexOf('.'));
+                    let fullName = `${filename}${ext}`;
+                    let fileCounter = 1;
+                    
+                    while (usedFileNames.has(fullName)) {
+                        fullName = `${filename}_${fileCounter++}${ext}`;
                     }
-                }
+                    usedFileNames.add(fullName);
 
-                status.value = '正在生成 ZIP 文件...';
-                zip.generateAsync({ type: "blob" })
-                    .then(function(content) {
-                        // see FileSaver.js
-                        saveAs(content, "stickers.zip");
-                        status.value = '下载完成';
-                    });
-            };
+                    packFolder.file(fullName, imageBlob);
+                } catch (error) {
+                    console.error(`下载失败: ${item.name}`, error);
+                    status.value = `下载 ${item.name} 失败`;
+                }
+            }
+        }
+    }
+
+    status.value = '正在生成ZIP...';
+    zip.generateAsync({ type: "blob" })
+        .then(content => {
+            saveAs(content, "stickers.zip");
+            status.value = '下载完成';
+        });
+};
 
             onMounted(() => {
                 tokens.value.forEach(token => {
