@@ -21,7 +21,7 @@
             margin-bottom: 5px;
         }
 
-        input[type="text"], input[type="file"] {
+        input[type="text"], input[type="file"], input[type="number"], select {
             width: 100%;
             padding: 8px;
             margin-bottom: 10px;
@@ -73,7 +73,7 @@
             color: #888;
         }
 
-        /*  拖拽区域样式 */
+        /* 拖拽区域样式 */
         #dropArea {
             border: 2px dashed #ccc;
             padding: 20px;
@@ -88,6 +88,21 @@
         /* API选择框样式 */
         #apiChoice {
             margin-bottom: 10px;
+        }
+        
+        /* 分片大小设置样式 */
+        .chunk-size-container {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+        
+        .chunk-size-container input[type="number"] {
+            flex: 2;
+        }
+        
+        .chunk-size-container select {
+            flex: 1;
         }
     </style>
 </head>
@@ -107,6 +122,18 @@
             <option value="robot">机器人API</option>
             <option value="user">用户API</option>
         </select>
+    </div>
+    
+    <div id="chunkSizeSettings">
+        <label for="chunkSize">分片大小:</label>
+        <div class="chunk-size-container">
+            <input type="number" id="chunkSize" name="chunkSize" min="1" step="1">
+            <select id="chunkSizeUnit">
+                <option value="bytes">字节</option>
+                <option value="kb">KB</option>
+                <option value="mb" selected>MB</option>
+            </select>
+        </div>
     </div>
 
     <div id="dropArea">
@@ -130,19 +157,29 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/spark-md5/3.0.2/spark-md5.min.js"></script>
 <script>
     let rawToken = ''; // 用于存储原始 Token
+    let currentChunkSize = 0; // 当前分片大小（字节）
+    let chunkMD5List = [];
+    let totalChunks = 0;
+    let currentChunk = 0;
+    let file;
+    let fileNameWithoutExtension;
+    let startTime;
+    let existingChunks = []; // 用于记录已存在的分片
 
-    // 页面加载时，从 localStorage 恢复 Token
+    // 页面加载时，从 localStorage 恢复 Token 和分片大小设置
     window.onload = function () {
         const apiType = document.getElementById('apiType').value;
         restoreToken(apiType);
         maskTokenDisplay(); // 显示遮蔽后的 Token
+        restoreChunkSizeSettings(apiType); // 恢复分片大小设置
     };
 
-    // 监听 API 类型改变，自动读取相应的 Token
+    // 监听 API 类型改变，自动读取相应的 Token 和分片大小设置
     document.getElementById('apiType').addEventListener('change', function () {
         const apiType = this.value;
         restoreToken(apiType);
         maskTokenDisplay(); // 显示遮蔽后的 Token
+        restoreChunkSizeSettings(apiType); // 恢复分片大小设置
     });
 
     // 监听 Token 输入，自动保存到 localStorage
@@ -152,6 +189,10 @@
         saveToken(apiType, rawToken);
         maskTokenDisplay(); // 显示遮蔽后的 Token
     });
+    
+    // 监听分片大小设置变化
+    document.getElementById('chunkSize').addEventListener('input', saveChunkSizeSettings);
+    document.getElementById('chunkSizeUnit').addEventListener('change', saveChunkSizeSettings);
 
     // 清除 Token
     function clearToken() {
@@ -168,17 +209,67 @@
         if (savedToken) {
             rawToken = savedToken; // 恢复原始 Token
         } else {
-            rawToken = ''; //  确保 rawToken 初始化
+            rawToken = ''; // 确保 rawToken 初始化
         }
-        maskTokenDisplay(); //  显示
+        maskTokenDisplay(); // 显示
     }
 
     // 保存 Token 到 localStorage
     function saveToken(apiType, token) {
         localStorage.setItem(`uploadToken_${apiType}`, token);
     }
+    
+    // 保存分片大小设置到 localStorage
+    function saveChunkSizeSettings() {
+        const apiType = document.getElementById('apiType').value;
+        const size = document.getElementById('chunkSize').value;
+        const unit = document.getElementById('chunkSizeUnit').value;
+        
+        localStorage.setItem(`chunkSize_${apiType}`, size);
+        localStorage.setItem(`chunkSizeUnit_${apiType}`, unit);
+        
+        // 更新当前分片大小
+        updateCurrentChunkSize();
+    }
+    
+    // 恢复分片大小设置
+    function restoreChunkSizeSettings(apiType) {
+        // 默认值：机器人API 19MB，用户API 40MB
+        const defaultSizes = {
+            robot: { size: 19, unit: 'mb' },
+            user: { size: 40, unit: 'mb' }
+        };
+        
+        const size = localStorage.getItem(`chunkSize_${apiType}`) || defaultSizes[apiType].size;
+        const unit = localStorage.getItem(`chunkSizeUnit_${apiType}`) || defaultSizes[apiType].unit;
+        
+        document.getElementById('chunkSize').value = size;
+        document.getElementById('chunkSizeUnit').value = unit;
+        
+        updateCurrentChunkSize();
+    }
+    
+    // 计算当前分片大小的字节数
+    function updateCurrentChunkSize() {
+        const size = parseFloat(document.getElementById('chunkSize').value) || 0;
+        const unit = document.getElementById('chunkSizeUnit').value;
+        
+        switch(unit) {
+            case 'kb':
+                currentChunkSize = size * 1024;
+                break;
+            case 'mb':
+                currentChunkSize = size * 1024 * 1024;
+                break;
+            default: // bytes
+                currentChunkSize = size;
+        }
+        
+        // 确保最小分片大小为1字节
+        currentChunkSize = Math.max(1, currentChunkSize);
+    }
 
-    // **修改: 遮蔽 Token 显示，只修改显示效果**
+    // 遮蔽 Token 显示，只修改显示效果
     function maskTokenDisplay() {
         const tokenInput = document.getElementById('token');
         const token = rawToken; // 使用 rawToken
@@ -190,20 +281,10 @@
         const visibleLength = 4;
         const maskedLength = token.length - 2 * visibleLength;
         const maskedToken = token.substring(0, visibleLength) + '*'.repeat(maskedLength) + token.substring(token.length - visibleLength);
-        tokenInput.value = maskedToken; //  修改显示值
+        tokenInput.value = maskedToken; // 修改显示值
     }
 
-
-    const chunkSize = 1024 * 1024 * 19; // 19MB chunk size
-    let chunkMD5List = [];
-    let totalChunks = 0;
-    let currentChunk = 0;
-    let file;
-    let fileNameWithoutExtension;
-    let startTime;
-    let existingChunks = []; // 用于记录已存在的分片
-
-    //  拖拽相关事件处理
+    // 拖拽相关事件处理
     const dropArea = document.getElementById('dropArea');
 
     ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
@@ -238,11 +319,11 @@
         const files = dt.files
 
         if (files.length > 0) {
-            handleFile(files[0]); //  只处理第一个文件
+            handleFile(files[0]); // 只处理第一个文件
         }
     }
 
-    //  文件选择框事件处理
+    // 文件选择框事件处理
     const fileInput = document.getElementById('file');
     fileInput.addEventListener('change', function (e) {
         handleFile(e.target.files[0]); // 处理选择的文件
@@ -256,7 +337,7 @@
         }
 
         fileNameWithoutExtension = file.name.substring(0, file.name.lastIndexOf('.')) || file.name;
-        totalChunks = Math.ceil(file.size / chunkSize);
+        totalChunks = Math.ceil(file.size / currentChunkSize); // 使用当前分片大小
         currentChunk = 0;
         chunkMD5List = [];
         existingChunks = []; // 初始化已存在的分片列表
@@ -280,7 +361,7 @@
         }
 
         fileNameWithoutExtension = file.name.substring(0, file.name.lastIndexOf('.')) || file.name;
-        totalChunks = Math.ceil(file.size / chunkSize);
+        totalChunks = Math.ceil(file.size / currentChunkSize); // 使用当前分片大小
         currentChunk = 0;
         chunkMD5List = [];
         existingChunks = []; // 初始化已存在的分片列表
@@ -307,13 +388,13 @@
     }
 
     function uploadChunk(chunk, retryCount) {
-        const start = chunk * chunkSize;
-        const end = Math.min(file.size, start + chunkSize);
+        const start = chunk * currentChunkSize; // 使用当前分片大小
+        const end = Math.min(file.size, start + currentChunkSize); // 使用当前分片大小
         const chunkFile = file.slice(start, end);
 
         setMD5Status(`计算分片 ${chunk + 1}/${totalChunks} 的MD5...`);
 
-        //  内联 Web Worker
+        // 内联 Web Worker
         const workerCode = `
             importScripts('https://cdnjs.cloudflare.com/ajax/libs/spark-md5/3.0.2/spark-md5.min.js');
 
@@ -330,26 +411,21 @@
         const workerUrl = URL.createObjectURL(blob);
         const worker = new Worker(workerUrl);
 
-        //  **修改1: 复制 chunkFile 数据，并尽快释放 Blob 对象**
-        const chunkFileCopy = chunkFile.slice(0);  //  创建一个新的 Blob 对象，复制数据
+        const chunkFileCopy = chunkFile.slice(0);  // 创建一个新的 Blob 对象，复制数据
         const fileReader = new FileReader();
         fileReader.onload = function (e) {
             const chunkData = e.target.result;
             worker.postMessage({ chunk: chunkData });
-            //  **修改2:  使用 FileReader.readAsArrayBuffer 后尽快释放 Blob 对象**
-            //chunkFile = null; //  **移除此行，因为后面还需要使用 chunkFile**
         };
         fileReader.onerror = function () {
             console.warn('FileReader error.');
             setMD5Status(`分片 ${chunk + 1}/${totalChunks} 读取失败.`);
         };
-        fileReader.readAsArrayBuffer(chunkFileCopy); //  读取分片
-
-        //worker.postMessage({ chunk: chunkFile });  //  **移除这行代码**
+        fileReader.readAsArrayBuffer(chunkFileCopy); // 读取分片
 
         worker.onmessage = function(event) {
             const chunkMD5 = event.data.md5;
-            worker.terminate(); //  终止 worker，释放资源
+            worker.terminate(); // 终止 worker，释放资源
             URL.revokeObjectURL(workerUrl); // 释放 URL 对象
 
             if (!chunkMD5) {
@@ -360,9 +436,6 @@
             setMD5Status(`分片 ${chunk + 1}/${totalChunks} MD5 计算完成.`);
 
             const formData = new FormData();
-            //const chunkFileName = fileNameWithoutExtension + "_chunk_" + chunk;
-            //const chunkFileName = "chunk_" + chunk; //  固定文件名
-
             const apiType = document.getElementById('apiType').value; // 获取选择的API类型
             let uploadUrl = '';
 
@@ -375,25 +448,23 @@
                         // 构建 FormData 对象
                         const finalFormData = new FormData();
                         const fileType = file.name.substring(file.name.lastIndexOf('.')) || ''; // 获取文件后缀名
-                        //const fileMd5 = SparkMD5.ArrayBuffer.hash(chunkFile);  // 计算整个chunkFile的MD5
                         const utoken = uploadInfo.utoken;
                         finalFormData.append('token', utoken);
-                        //  **修改3: 使用 MD5 作为 key (文件名)**
                         finalFormData.append('key', chunkMD5);
-                        finalFormData.append('file', chunkFile, chunkMD5); //  使用 MD5 作为文件名
+                        finalFormData.append('file', chunkFile, chunkMD5); // 使用 MD5 作为文件名
 
-                        //  创建 xhr 对象
-                        const xhr = new XMLHttpRequest();  //  在这里创建 xhr 对象
-                        xhr.open('POST', uhost, true);  //  使用 uhost，不再添加 https://
+                        // 创建 xhr 对象
+                        const xhr = new XMLHttpRequest();  // 在这里创建 xhr 对象
+                        xhr.open('POST', uhost, true);  // 使用 uhost，不再添加 https://
                         xhr.upload.onprogress = function (event) {
                             if (event.lengthComputable) {
-                                const percentComplete = ((chunk * chunkSize + event.loaded) / file.size) * 100;
+                                const percentComplete = ((chunk * currentChunkSize + event.loaded) / file.size) * 100;
                                 updateProgressBar(percentComplete);
                             }
                             // 计算上传速度
                             const currentTime = new Date().getTime();
                             const timeDiff = (currentTime - startTime) / 1000;
-                            const loaded = chunk * chunkSize + event.loaded;
+                            const loaded = chunk * currentChunkSize + event.loaded;
                             const speed = loaded / timeDiff;
                             const speedInKB = (speed / 1024).toFixed(2);
 
@@ -423,8 +494,8 @@
                                     if (xhr.status === 200 && response.error === "file exist") {  // 根据实际的错误返回信息修改
                                         console.warn(`分片 ${chunk + 1} 已存在.`);
                                         existingChunks.push(chunk); // 记录已存在的分片
-                                        //  跳过 MD5 处理
-                                        chunkMD5List.push({chunk: chunk, md5: chunkMD5});  //  添加 MD5
+                                        // 跳过 MD5 处理
+                                        chunkMD5List.push({chunk: chunk, md5: chunkMD5});  // 添加 MD5
                                         currentChunk++;
                                         uploadNextChunk(); // 上传下一个分片
                                     } else {
@@ -436,8 +507,8 @@
                                 if (xhr.status === 614) {
                                     console.warn(`分片 ${chunk + 1} 已存在.`);
                                     existingChunks.push(chunk); // 记录已存在的分片
-                                      //  跳过 MD5 处理
-                                      chunkMD5List.push({chunk: chunk, md5: chunkMD5});  //  添加 MD5
+                                      // 跳过 MD5 处理
+                                      chunkMD5List.push({chunk: chunk, md5: chunkMD5});  // 添加 MD5
                                     currentChunk++;
                                     uploadNextChunk(); // 上传下一个分片
                                 } else if (retryCount < 3) {
@@ -467,18 +538,18 @@
                 // 使用 机器人API (原来的方式)
                 const token = rawToken; // 使用 rawToken
                 let uploadUrl = 'https://chat-go.jwzhd.com/open-apis/v1/file/upload?token=' + token;
-                const xhr = new XMLHttpRequest();  //  在这里创建 xhr 对象
+                const xhr = new XMLHttpRequest();  // 在这里创建 xhr 对象
                 xhr.open('POST', uploadUrl, true);
 
                 xhr.upload.onprogress = function (event) {
                     if (event.lengthComputable) {
-                        const percentComplete = ((chunk * chunkSize + event.loaded) / file.size) * 100;
+                        const percentComplete = ((chunk * currentChunkSize + event.loaded) / file.size) * 100;
                         updateProgressBar(percentComplete);
                     }
                     // 计算上传速度
                     const currentTime = new Date().getTime();
                     const timeDiff = (currentTime - startTime) / 1000;
-                    const loaded = chunk * chunkSize + event.loaded;
+                    const loaded = chunk * currentChunkSize + event.loaded;
                     const speed = loaded / timeDiff;
                     const speedInKB = (speed / 1024).toFixed(2);
 
@@ -507,7 +578,7 @@
                              if (xhr.status === 200 && response.error === "file exist") {  // 根据实际的错误返回信息修改
                                 console.warn(`分片 ${chunk + 1} 已存在.`);
                                 existingChunks.push(chunk); // 记录已存在的分片
-                                chunkMD5List.push({chunk: chunk, md5: chunkMD5});  //  添加 MD5
+                                chunkMD5List.push({chunk: chunk, md5: chunkMD5});  // 添加 MD5
                                 currentChunk++;
                                 uploadNextChunk(); // 上传下一个分片
                             } else {
@@ -519,7 +590,7 @@
                         if (xhr.status === 614) {
                             console.warn(`分片 ${chunk + 1} 已存在.`);
                             existingChunks.push(chunk); // 记录已存在的分片
-                              chunkMD5List.push({chunk: chunk, md5: chunkMD5});  //  添加 MD5
+                              chunkMD5List.push({chunk: chunk, md5: chunkMD5});  // 添加 MD5
                             currentChunk++;
                             uploadNextChunk(); // 上传下一个分片
                         }  else if (retryCount < 3) {
@@ -540,7 +611,7 @@
                     }
                 };
 
-                formData.append('file', chunkFile, file.name); //  Use the original filename
+                formData.append('file', chunkFile, file.name); // Use the original filename
                 xhr.send(formData);
             }
         };
@@ -553,7 +624,7 @@
         };
     }
 
-    //  获取用户上传token 和 七牛云 host
+    // 获取用户上传token 和 七牛云 host
     async function getUserUploadToken(chunkFile, chunk, chunkMD5, formData) {
         const token = rawToken;  // 使用 rawToken
         console.log("getUserUploadToken 使用的 Token:", token);
@@ -594,7 +665,7 @@
 
             // 获取七牛云host
             const ak = utoken.split(':')[0];
-            const bucket = 'chat68-file'; //  根据你的实际情况设置 bucket
+            const bucket = 'chat68-file'; // 根据你的实际情况设置 bucket
             const hostUrl = `https://api.qiniu.com/v4/query?ak=${ak}&bucket=${bucket}`;
             const hostResponse = await fetch(hostUrl);
 
@@ -638,7 +709,7 @@
 
         let text = "";
         chunkMD5List.forEach(item => {
-            //  **修改4: 使用原始文件名 + "_chunk_" + 分片号**
+            // 使用原始文件名 + "_chunk_" + 分片号
             text += `${item.md5} # ${fileNameWithoutExtension}_chunk_${item.chunk}\n`;
         });
 
@@ -658,7 +729,7 @@
         document.body.removeChild(element);
     }
 
-    //  更新上传状态信息函数
+    // 更新上传状态信息函数
     function updateStatus(fileName, currentChunk, totalChunks, speedInKB) {
         const statusDiv = document.getElementById('uploadStatus');
         statusDiv.innerHTML = `上传文件: ${fileName}<br>
@@ -666,7 +737,7 @@
                                     速度: ${speedInKB} KB/s`;
     }
 
-    //  设置 MD5 状态信息函数
+    // 设置 MD5 状态信息函数
     function setMD5Status(message) {
         const md5StatusDiv = document.getElementById('md5Status');
         md5StatusDiv.innerHTML = message;
