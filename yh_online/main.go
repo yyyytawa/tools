@@ -8,6 +8,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -60,8 +61,18 @@ type Config struct {
 	Accounts []Account `yaml:"accounts"`
 }
 
+var (
+	runDuration time.Duration
+)
+
+func init() {
+	flag.DurationVar(&runDuration, "t", 0, "程序运行时长(例如: 30s、5m、1h)，默认一直运行")
+}
+
 func main() {
-	if len(os.Args) > 1 {
+	flag.Parse()
+
+	if len(os.Args) > 1 && os.Args[1] != "-t" {
 		handleCommand(os.Args[1:])
 		return
 	}
@@ -72,7 +83,7 @@ func main() {
 	}
 
 	if len(cfg.Accounts) == 0 {
-		fmt.Println("未找到有效账户配置，请先添加账户")
+		fmt.Println("未找到有效配置，请先添加账户")
 		addNewAccount("config.yaml")
 		return
 	}
@@ -106,6 +117,7 @@ func showHelp() {
 命令:
   help                显示此帮助信息
   account help        显示账户管理帮助
+  -t <duration>       运行指定时间后自动退出(如: -t 30m)
 
 配置文件路径: config.yaml`)
 }
@@ -187,8 +199,7 @@ func addNewAccount(path string) {
 请选择添加账户方式:
 1. 生成空白配置模板
 2. 手动输入配置信息
-3. 邮箱密码登录获取
-`)
+3. 邮箱密码登录获取`)
 
 	var choice int
 	fmt.Print("请选择(默认1): ")
@@ -322,7 +333,7 @@ func setAccountStatus(cfg *Config, idStr string, enable bool) {
 	}
 
 	if !hasEnabled {
-		fmt.Println("错误: 必须至少启用一个账户")
+		fmt.Println("必须至少启用一个账户")
 		return
 	}
 
@@ -373,22 +384,40 @@ func saveConfig(path string, cfg *Config) error {
 }
 
 func runKeepAlive(cfg *Config) {
-	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	// 设置程序运行超时
+	if runDuration > 0 {
+		log.Printf("程序将在 %v 后自动退出", runDuration)
+		time.AfterFunc(runDuration, func() {
+			log.Println("运行时间到达，即将退出...")
+			cancel()
+		})
+	}
+
+	// 添加信号监听
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt)
+	go func() {
+		<-sigChan
+		log.Println("\n接收到中断信号，即将退出...")
+		cancel()
+	}()
 
 	var wg sync.WaitGroup
 	for _, account := range cfg.Accounts {
 		if !account.Enabled {
-			log.Printf("账户(ID: %d, UserId: %s)已禁用，跳过保活", account.ID, account.UserId)
+			log.Printf("[账户 %d] 已禁用，跳过", account.ID)
 			continue
 		}
 
 		if account.UserId == "" || account.Token == "" {
-			log.Printf("账户(ID: %d)未配置完整(userId或token缺失)，跳过保活", account.ID)
+			log.Printf("[账户 %d] 配置不完整(userId或token缺失)，跳过", account.ID)
 			continue
 		}
 
-		accountCfg := account // 复制一份 account，避免并发问题
+		accountCfg := account
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -396,15 +425,23 @@ func runKeepAlive(cfg *Config) {
 			for {
 				select {
 				case <-ctx.Done():
-					log.Printf("账户(ID: %d, UserId: %s)接收到退出信号", accountCfg.ID, accountCfg.UserId)
+					log.Printf("[账户 %d] 接收到退出信号", accountCfg.ID)
 					return
 				default:
 					if accountCfg.DeviceId == "" {
 						accountCfg.DeviceId = generateDeviceId()
 					}
-					if err := runClient(ctx, accountCfg); err != nil {
-						log.Printf("账户(ID: %d, UserId: %s)连接出错: %v, %v后重试...",
-							accountCfg.ID, accountCfg.UserId, err, retryDelay)
+
+					err := runClient(ctx, accountCfg)
+					if err != nil {
+						if strings.Contains(err.Error(), "心跳确认失败") {
+							log.Printf("[账户 %d] 心跳确认失败，重连...", accountCfg.ID)
+							retryDelay = time.Second
+						} else {
+							log.Printf("[账户 %d] 连接错误: %v, %v后重试...",
+								accountCfg.ID, err, retryDelay)
+						}
+
 						select {
 						case <-time.After(retryDelay):
 							retryDelay *= 2
@@ -413,11 +450,8 @@ func runKeepAlive(cfg *Config) {
 							}
 							continue
 						case <-ctx.Done():
-							log.Printf("账户(ID: %d, UserId: %s)接收到退出信号", accountCfg.ID, accountCfg.UserId)
 							return
 						}
-					} else {
-						retryDelay = time.Second
 					}
 				}
 			}
@@ -425,19 +459,22 @@ func runKeepAlive(cfg *Config) {
 	}
 
 	wg.Wait()
-	log.Println("所有账户保活程序已退出")
+	log.Println("所有账户已退出")
 }
 
 func runClient(ctx context.Context, account Account) error {
 	u := url.URL{Scheme: "wss", Host: "chat-ws-go.jwzhd.com", Path: "/ws"}
-	log.Printf("正在连接 %s (账户ID: %d, UserId: %s)", u.String(), account.ID, account.UserId)
+	log.Printf("[账户 %d] 正在连接WebSocket...", account.ID)
 
-	conn, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
+	dialer := websocket.DefaultDialer
+	dialer.HandshakeTimeout = 10 * time.Second
+	conn, _, err := dialer.Dial(u.String(), nil)
 	if err != nil {
-		return err
+		return fmt.Errorf("连接失败: %v", err)
 	}
 	defer conn.Close()
 
+	// 登录请求
 	loginMsg := map[string]interface{}{
 		"seq": generateSeq(),
 		"cmd": "login",
@@ -449,26 +486,77 @@ func runClient(ctx context.Context, account Account) error {
 		},
 	}
 	if err := conn.WriteJSON(loginMsg); err != nil {
-		return err
+		return fmt.Errorf("发送登录请求失败: %v", err)
 	}
-	log.Printf("账户(ID: %d, UserId: %s)已发送登录包", account.ID, account.UserId)
 
-	ticker := time.NewTicker(30 * time.Second)
-	defer ticker.Stop()
+	log.Printf("[账户 %d] 登录请求已发送", account.ID)
+
+	// 心跳相关配置
+	const (
+		heartbeatInterval   = 30 * time.Second
+		ackWaitTimeout      = 10 * time.Second
+		maxConsecutiveFails = 3
+	)
+
+	var (
+		consecutiveAckFails = 0
+		heartbeatTicker     = time.NewTicker(heartbeatInterval)
+		ackReceived         = make(chan struct{}, 1)
+		readErr             = make(chan error, 1)
+	)
+
+	defer heartbeatTicker.Stop()
+
+	// 启动读协程
+	go func() {
+		for {
+			messageType, message, err := conn.ReadMessage()
+			if err != nil {
+				readErr <- fmt.Errorf("读取错误: %v", err)
+				return
+			}
+
+			if messageType == websocket.BinaryMessage && strings.Contains(string(message), "heartbeat_ack") {
+				select {
+				case ackReceived <- struct{}{}:
+				default:
+				}
+				log.Printf("[账户 %d] 收到心跳确认", account.ID)
+			}
+		}
+	}()
 
 	for {
 		select {
-		case <-ticker.C:
+		case <-heartbeatTicker.C:
+			// 发送心跳包
+			seq := generateSeq()
 			if err := conn.WriteJSON(map[string]interface{}{
-				"seq":  generateSeq(),
+				"seq":  seq,
 				"cmd":  "heartbeat",
 				"data": struct{}{},
 			}); err != nil {
-				return err
+				return fmt.Errorf("发送心跳失败: %v", err)
 			}
-			log.Printf("账户(ID: %d, UserId: %s)已发送心跳包", account.ID, account.UserId)
+			log.Printf("[账户 %d] 心跳已发送(seq: %s)", account.ID, seq)
+
+			// 等待心跳确认
+			select {
+			case <-ackReceived:
+				consecutiveAckFails = 0
+			case <-time.After(ackWaitTimeout):
+				consecutiveAckFails++
+				log.Printf("[账户 %d] 心跳确认超时(%d/%d)", account.ID, consecutiveAckFails, maxConsecutiveFails)
+				if consecutiveAckFails >= maxConsecutiveFails {
+					return fmt.Errorf("心跳确认失败%d次", maxConsecutiveFails)
+				}
+			}
+
+		case err := <-readErr:
+			return fmt.Errorf("连接错误: %v", err)
+
 		case <-ctx.Done():
-			log.Printf("账户(ID: %d, UserId: %s)接收到退出信号，停止发送心跳包", account.ID, account.UserId)
+			log.Printf("[账户 %d] 收到退出信号，关闭连接", account.ID)
 			return nil
 		}
 	}
@@ -537,18 +625,18 @@ func generateDeviceId() string {
 	_, err := rand.Read(b)
 	if err != nil {
 		log.Println("生成随机设备ID失败:", err)
-		return "auto-" + generateSeq()[:8] // 备用方案
+		return "auto-" + generateSeq()[:8]
 	}
 	return "web-" + hex.EncodeToString(b)
 }
 
 func generateSeq() string {
-	timestamp := time.Now().UnixNano() / int64(time.Millisecond) // 毫秒时间戳
+	timestamp := time.Now().UnixNano() / int64(time.Millisecond)
 	randBytes := make([]byte, 4)
 	_, err := rand.Read(randBytes)
 	if err != nil {
 		log.Println("生成随机数失败:", err)
-		return fmt.Sprintf("%d", timestamp) // 备用方案
+		return fmt.Sprintf("%d", timestamp)
 	}
 
 	data := fmt.Sprintf("%d%s", timestamp, hex.EncodeToString(randBytes))
