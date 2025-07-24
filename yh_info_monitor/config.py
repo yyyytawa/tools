@@ -1,11 +1,11 @@
-bot_token = "gtdcngdhjfdbd"    # BOT TOKEN
+bot_token = "45456461981"    # BOT TOKEN
 # 监控列表与监控数据相关
 monitored_list = { # 不需要可留空
   "6301414": {
     "type": "user",
     "user": [7354488],
   },
-  "875050655": {
+  "257731539": {
     "type": "group",
     "group": [257731539]
   },
