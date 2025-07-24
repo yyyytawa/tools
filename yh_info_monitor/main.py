@@ -275,6 +275,13 @@ def make_html(id,type,old_name,new_name,old_avatar,new_avatar,old_introduction, 
 </div>"""
     return html_content
 
+def make_md(old_avatar, new_avatar): # 等后续Feng修HTML访问云湖图床bug后删除
+    if old_avatar == new_avatar:
+        content =f"![avatar]({new_avatar})"
+    else:
+        content =f"![new_avatar]({new_avatar})\n![]({old_avatar})"
+    return content
+
 def monitor_thread_instance():
     global monitor_data, monitored_list, time_per_check, time_per_object, time_per_push
     logging.info("监控线程开始启动")
@@ -332,13 +339,20 @@ def monitor_thread_instance():
                         old_introduction = old_info.get("introduction"),
                         new_introduction = current_info.get("introduction")
                     )
+                    
+                    msg_content_md = make_md( # 等后续Feng修HTML访问云湖图床bug后删除
+                        old_avatar = old_info.get("avatarUrl"),
+                        new_avatar = current_info.get("avatarUrl")
+                    )
 
                     for notify_group in monitored_list.get(id,[]).get("group",""):
                         push_msg(notify_group,"group",msg_content,"html")
+                        push_msg(notify_group,"group",msg_content_md,"markdown") # 等后续Feng修HTML访问云湖图床bug后删除
                         logging.info(f"推送 {id} 信息到群组 {notify_group}")
                         time.sleep(time_per_push)
                     for notify_user in monitored_list.get(id).get("user",[]):
                         push_msg(notify_user,"user",msg_content,"html")
+                        push_msg(notify_user,"user",msg_content,"markdown") # 等后续Feng修HTML访问云湖图床bug后删除
                         logging.info(f"推送 {id} 信息到用户 {notify_user}")
                         time.sleep(time_per_push)
                         
