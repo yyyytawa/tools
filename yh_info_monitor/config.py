@@ -1,4 +1,4 @@
-bot_token = "45456461981"    # BOT TOKEN
+bot_token = "11451419180"    # BOT TOKEN
 # 监控列表与监控数据相关
 monitored_list = { # 不需要可留空
   "6301414": {

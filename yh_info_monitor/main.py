@@ -1,4 +1,5 @@
 import json
+from html import escape as html_escape
 import requests
 import logging
 import config
@@ -190,6 +191,13 @@ def make_html(id,type,old_name,new_name,old_avatar,new_avatar,old_introduction, 
         logging.error(f"未知类型: {type}")
         type_text = ""
 
+    old_name = html_escape(old_name) # 转义防注入
+    new_name = html_escape(new_name)
+    old_avatar = html_escape(old_avatar)
+    new_avatar = html_escape(new_avatar)
+    old_introduction = html_escape(old_introduction)
+    new_introduction = html_escape(new_introduction)
+
     if new_name != old_name: # 名称
         name_part = f"""
     <div style="margin-bottom: 12px;">
@@ -336,8 +344,8 @@ def monitor_thread_instance():
                         new_name = current_info.get("name"),
                         old_avatar = old_info.get("avatarUrl"),
                         new_avatar = current_info.get("avatarUrl"),
-                        old_introduction = old_info.get("introduction"),
-                        new_introduction = current_info.get("introduction")
+                        old_introduction = old_info.get("introduction",""),
+                        new_introduction = current_info.get("introduction","")
                     )
                     
                     msg_content_md = make_md( # 等后续Feng修HTML访问云湖图床bug后删除
@@ -352,7 +360,7 @@ def monitor_thread_instance():
                         time.sleep(time_per_push)
                     for notify_user in monitored_list.get(id).get("user",[]):
                         push_msg(notify_user,"user",msg_content,"html")
-                        push_msg(notify_user,"user",msg_content,"markdown") # 等后续Feng修HTML访问云湖图床bug后删除
+                        push_msg(notify_user,"user",msg_content_md,"markdown") # 等后续Feng修HTML访问云湖图床bug后删除
                         logging.info(f"推送 {id} 信息到用户 {notify_user}")
                         time.sleep(time_per_push)
                         
