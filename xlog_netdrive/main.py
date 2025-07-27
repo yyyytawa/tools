@@ -9,7 +9,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 # 设置区域
 prefix = "https://ipfs.crossbell.io/ipfs/" # 注意最后带"/"
 default_file_name = "file.bin" # 默认文件名
-chunk_size = 1 #分片大小
+chunk_size = 6 * 1024 * 1024 #分片大小
 
 # 参数
 parser = argparse.ArgumentParser(description="xlog网盘")
