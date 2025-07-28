@@ -9,7 +9,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 # 设置区域
 prefix = "https://ipfs.crossbell.io/ipfs/" # 注意最后带"/"
 default_file_name = "file.bin" # 默认文件名
-chunk_size = 6 * 1024 * 1024 #分片大小
+chunk_size = 31 * 1024 * 1024 #分片大小
 
 # 参数
 parser = argparse.ArgumentParser(description="xlog网盘")
@@ -67,10 +67,12 @@ def upload_file(file_path, chunk_size):
     file_list = []
     for chunk_data in spilt_file(file_path, chunk_size):
         try:
+            transport = httpx.HTTPTransport(http2=True, retries=3)
             upload_url = "https://ipfs-relay.crossbell.io/upload"
             files = {'file': chunk_data}
-            response = httpx.post(upload_url,files=files)
-            response.raise_for_status()
+            with httpx.Client(transport=transport) as client:
+                response = client.post(upload_url,files=files,timeout=30)
+                response.raise_for_status()
             data = response.json()
             if data.get("status") != "ok":
                 logging.error(f"错误: {response}")
