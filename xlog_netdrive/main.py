@@ -129,7 +129,7 @@ if __name__ == "__main__":
         if meta_info:
             logging.info("正在下载文件")
             if args.file_path == default_file_name and meta_info.get("name") != None:
-                file_path = meta_info.get("name",default_file_name)
+                file_path = meta_info.get("name",default_file_name).replace("/","_").replace("\\","_")
             else:
                 file_path = args.file_path
             download_file(file_path = file_path, url_list = meta_info.get("cid"))
