@@ -218,6 +218,38 @@
             word-break: break-all;
             margin-top: 10px;
             border: 1px solid #e9ecef;
+            position: relative;
+            overflow-wrap: break-word;
+            word-wrap: break-word;
+        }
+
+        .code-display .copy-btn {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            padding: 4px 8px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .code-display .copy-btn:hover {
+            background: #5a67d8;
+        }
+
+        .result-item {
+            margin-bottom: 15px;
+        }
+
+        .result-label {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 5px;
+            display: block;
         }
 
         .logs {
@@ -363,6 +395,36 @@
             background: rgba(23, 162, 184, 0.1);
         }
 
+        .history-btn.delete {
+            color: #dc3545;
+            border-color: rgba(220, 53, 69, 0.3);
+        }
+
+        .history-btn.delete:hover {
+            background: rgba(220, 53, 69, 0.1);
+        }
+
+        .import-area {
+            border: 2px dashed #ccc;
+            border-radius: 8px;
+            padding: 20px;
+            text-align: center;
+            margin-bottom: 15px;
+            background: #f8f9fa;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .import-area:hover,
+        .import-area.drag-over {
+            border-color: #667eea;
+            background: rgba(102, 126, 234, 0.05);
+        }
+
+        .import-area input[type=file] {
+            display: none;
+        }
+
         @media (max-width: 600px) {
             .container {
                 margin: 10px;
@@ -441,6 +503,11 @@
 
         <!-- 历史记录标签页 -->
         <div id="history-tab" class="tab-content">
+            <div class="import-area" onclick="document.getElementById('importFile').click()">
+                <input type="file" id="importFile" accept=".json" onchange="importHistory(event)">
+                📥 点击导入历史记录文件 (JSON格式)
+            </div>
+            
             <div style="display: flex; gap: 10px; margin-bottom: 20px;">
                 <button class="btn btn-primary" style="flex: 1;" onclick="clearHistory()">
                     🗑️ 清空记录
@@ -475,6 +542,7 @@
         // 初始化
         document.addEventListener('DOMContentLoaded', function() {
             setupDragAndDrop();
+            setupImportDragDrop();
             parseUrlParams();
             
             // 初始化 StreamSaver
@@ -484,11 +552,48 @@
             }
         });
 
+        // 设置导入区域的拖拽功能
+        function setupImportDragDrop() {
+            const importArea = document.querySelector('.import-area');
+            
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                importArea.addEventListener(eventName, preventDefaults, false);
+            });
+
+            function preventDefaults(e) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+
+            ['dragenter', 'dragover'].forEach(eventName => {
+                importArea.addEventListener(eventName, () => importArea.classList.add('drag-over'), false);
+            });
+
+            ['dragleave', 'drop'].forEach(eventName => {
+                importArea.addEventListener(eventName, () => importArea.classList.remove('drag-over'), false);
+            });
+
+            importArea.addEventListener('drop', function(e) {
+                const files = e.dataTransfer.files;
+                if (files.length > 0) {
+                    const file = files[0];
+                    if (file.type === 'application/json' || file.name.endsWith('.json')) {
+                        // 模拟文件输入事件
+                        const event = { target: { files: [file], value: '' } };
+                        importHistory(event);
+                    } else {
+                        alert('请选择JSON格式的文件');
+                    }
+                }
+            }, false);
+        }
+
         // 解析URL参数
         function parseUrlParams() {
             const urlParams = new URLSearchParams(window.location.search);
             const downloadCode = urlParams.get('d');
             const fileName = urlParams.get('f');
+            const autoDownload = urlParams.get('dl') === '1';
             
             if (downloadCode) {
                 switchTab('download');
@@ -497,6 +602,13 @@
                 
                 if (fileName) {
                     document.getElementById('saveFileName').value = fileName;
+                }
+                
+                // 如果有dl=1参数，自动触发下载
+                if (autoDownload) {
+                    setTimeout(() => {
+                        downloadFile();
+                    }, 1000); // 延迟1秒确保界面加载完成
                 }
             }
         }
@@ -700,6 +812,72 @@
             URL.revokeObjectURL(url);
         }
 
+        function importHistory(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const importedHistory = JSON.parse(e.target.result);
+                    
+                    if (!Array.isArray(importedHistory)) {
+                        throw new Error('无效的历史记录格式');
+                    }
+                    
+                    // 验证数据格式
+                    const validHistory = importedHistory.filter(record => {
+                        return record.id && record.type && record.timestamp && 
+                               (record.type === 'upload' || record.type === 'download');
+                    });
+                    
+                    if (validHistory.length === 0) {
+                        throw new Error('未找到有效的历史记录');
+                    }
+                    
+                    // 合并现有历史记录
+                    const existingHistory = getHistory();
+                    const mergedHistory = [...validHistory, ...existingHistory];
+                    
+                    // 去重（基于ID）
+                    const uniqueHistory = mergedHistory.filter((record, index, self) => 
+                        index === self.findIndex(r => r.id === record.id)
+                    );
+                    
+                    // 按时间排序并限制数量
+                    uniqueHistory.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+                    if (uniqueHistory.length > 100) {
+                        uniqueHistory.splice(100);
+                    }
+                    
+                    localStorage.setItem('xlog_history', JSON.stringify(uniqueHistory));
+                    refreshHistoryDisplay();
+                    
+                    alert(`成功导入 ${validHistory.length} 条历史记录`);
+                    
+                } catch (error) {
+                    alert(`导入失败: ${error.message}`);
+                }
+            };
+            
+            reader.readAsText(file);
+            // 清空文件输入，允许重复导入同一文件
+            event.target.value = '';
+        }
+
+        function deleteHistoryItem(id) {
+            if (confirm('确定要删除这条历史记录吗？')) {
+                const history = getHistory();
+                const filteredHistory = history.filter(record => record.id !== id);
+                try {
+                    localStorage.setItem('xlog_history', JSON.stringify(filteredHistory));
+                    refreshHistoryDisplay();
+                } catch (e) {
+                    console.warn('无法删除历史记录:', e);
+                }
+            }
+        }
+
         function refreshHistoryDisplay() {
             const historyList = document.getElementById('historyList');
             const history = getHistory();
@@ -718,16 +896,19 @@
                 let actions = '';
                 
                 if (record.type === 'upload') {
-                    content = `文件: ${record.fileName}<br>取件码: ${record.cid}`;
+                    content = `文件: ${record.fileName}`;
                     actions = `
                         <button class="history-btn copy" onclick="copyToClipboard('${record.cid}')">复制取件码</button>
                         <button class="history-btn copy" onclick="copyToClipboard('${window.location.origin}${window.location.pathname}?d=${record.cid}')">复制链接</button>
+                        <button class="history-btn copy" onclick="copyToClipboard('${window.location.origin}${window.location.pathname}?d=${record.cid}&dl=1')">复制直下链接</button>
+                        <button class="history-btn delete" onclick="deleteHistoryItem(${record.id})">删除</button>
                     `;
                 } else {
-                    content = `文件: ${record.fileName}<br>取件码: ${record.cid}`;
+                    content = `文件: ${record.fileName}`;
                     actions = `
                         <button class="history-btn download" onclick="useHistoryRecord('${record.cid}', '${record.fileName}')">重新下载</button>
                         <button class="history-btn copy" onclick="copyToClipboard('${record.cid}')">复制取件码</button>
+                        <button class="history-btn delete" onclick="deleteHistoryItem(${record.id})">删除</button>
                     `;
                 }
                 
@@ -738,6 +919,14 @@
                             <span class="history-time">${time}</span>
                         </div>
                         <div class="history-content">${content}</div>
+                        ${record.type === 'upload' ? `
+                        <div class="result-item">
+                            <span class="result-label">取件码:</span>
+                            <div class="code-display">
+                                ${record.cid}
+                                <button class="copy-btn" onclick="copyToClipboard('${record.cid}')">复制</button>
+                            </div>
+                        </div>` : ''}
                         <div class="history-actions">${actions}</div>
                     </div>
                 `;
@@ -907,11 +1096,31 @@
                     cid: cid
                 });
                 
+                const shareLink = `${window.location.origin}${window.location.pathname}?d=${cid}`;
+                const directDownloadLink = `${shareLink}&dl=1`;
+                
                 showResult(`
                     ✅ 上传成功！<br>
-                    <div class="code-display">取件码: ${cid}</div>
-                    <div style="margin-top: 10px; font-size: 12px; color: #666;">
-                        分享链接: ${window.location.origin}${window.location.pathname}?d=${cid}
+                    <div class="result-item">
+                        <span class="result-label">取件码:</span>
+                        <div class="code-display">
+                            ${cid}
+                            <button class="copy-btn" onclick="copyToClipboard('${cid}')">复制</button>
+                        </div>
+                    </div>
+                    <div class="result-item">
+                        <span class="result-label">分享链接:</span>
+                        <div class="code-display">
+                            ${shareLink}
+                            <button class="copy-btn" onclick="copyToClipboard('${shareLink}')">复制</button>
+                        </div>
+                    </div>
+                    <div class="result-item">
+                        <span class="result-label">直接下载链接:</span>
+                        <div class="code-display">
+                            ${directDownloadLink}
+                            <button class="copy-btn" onclick="copyToClipboard('${directDownloadLink}')">复制</button>
+                        </div>
                     </div>
                 `, true, 'uploadResult');
                 
