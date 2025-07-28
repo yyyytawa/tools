@@ -19,7 +19,7 @@ group = parser.add_mutually_exclusive_group(required=True)
 # 互斥参数
 group.add_argument("-u", "--upload_file", type=str,default=None, help="上传文件") # 位置参数
 parser.add_argument("-f", "--file_path", type=str, default=default_file_name, help="保存文件位置(可选)")
-parser.add_argument("-n", "--file_name", type=str, default=default_file_name, help="文件名称(可选)")
+parser.add_argument("-n", "--file_name", type=str, default=None, help="文件名称(可选)")
 group.add_argument("-d", "--download_file", type=str,default=None, help="输入取件码")
 
 # 解析参数
@@ -30,7 +30,6 @@ def download_file(url_list: list[str],file_path: str, prefix=prefix):
         with httpx.Client(http2=True, follow_redirects=True, timeout=30) as client:
             with open(file_path,"ab") as f:
                 for url in url_list:
-                    logging.info(f"正在下载 {prefix}{url}")
                     try:
                         with client.stream("GET",prefix+url) as response:
                             response.raise_for_status()
@@ -81,7 +80,7 @@ def upload_file(file_path, chunk_size):
             logging.error(f"发生错误 {e}")
     return file_list
 
-def make_meta_file(url_list, name=default_file_name):
+def make_meta_file(url_list, name=None):
     meta_file = {
         "name": name,
         "cid": url_list
@@ -129,6 +128,10 @@ if __name__ == "__main__":
         meta_info = get_info(args.download_file)
         if meta_info:
             logging.info("正在下载文件")
-            download_file(file_path = args.file_path, url_list = meta_info.get("cid"))
+            if args.file_path == default_file_name and meta_info.get("name") != None:
+                file_path = meta_info.get("name",default_file_name)
+            else:
+                file_path = args.file_path
+            download_file(file_path = file_path, url_list = meta_info.get("cid"))
         else:
             logging.error("无法获取文件信息")
