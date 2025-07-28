@@ -1,0 +1,1083 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>xlog网盘 - 网页版</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            padding: 40px;
+            width: 100%;
+            max-width: 500px;
+            text-align: center;
+        }
+
+        .logo {
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: #667eea;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 1.1rem;
+        }
+
+        .tab-container {
+            display: flex;
+            margin-bottom: 30px;
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 4px;
+        }
+
+        .tab {
+            flex: 1;
+            padding: 12px 20px;
+            border: none;
+            background: transparent;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            color: #666;
+        }
+
+        .tab.active {
+            background: #667eea;
+            color: white;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+            text-align: left;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .form-control {
+            width: 100%;
+            padding: 14px 18px;
+            border: 2px solid #e9ecef;
+            border-radius: 12px;
+            font-size: 16px;
+            transition: all 0.3s ease;
+            background: #fff;
+        }
+
+        .form-control:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+            transform: translateY(-2px);
+        }
+
+        .file-upload {
+            position: relative;
+            overflow: hidden;
+            display: inline-block;
+            width: 100%;
+        }
+
+        .file-upload input[type=file] {
+            position: absolute;
+            left: -9999px;
+        }
+
+        .file-upload-label {
+            display: block;
+            padding: 20px;
+            border: 3px dashed #ccc;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background: #f8f9fa;
+            color: #666;
+            font-weight: 600;
+        }
+
+        .file-upload-label:hover,
+        .file-upload.drag-over .file-upload-label {
+            border-color: #667eea;
+            background: rgba(102, 126, 234, 0.05);
+            color: #667eea;
+            transform: translateY(-2px);
+        }
+
+        .btn {
+            width: 100%;
+            padding: 16px 24px;
+            border: none;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-top: 10px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            color: white;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.6);
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none !important;
+        }
+
+        .progress {
+            width: 100%;
+            height: 8px;
+            background: #e9ecef;
+            border-radius: 4px;
+            margin: 20px 0;
+            overflow: hidden;
+            display: none;
+        }
+
+        .progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            width: 0;
+            transition: width 0.3s ease;
+            border-radius: 4px;
+        }
+
+        .result {
+            margin-top: 20px;
+            padding: 16px;
+            border-radius: 12px;
+            font-weight: 600;
+            display: none;
+        }
+
+        .result.success {
+            background: rgba(40, 167, 69, 0.1);
+            color: #28a745;
+            border: 2px solid rgba(40, 167, 69, 0.2);
+        }
+
+        .result.error {
+            background: rgba(220, 53, 69, 0.1);
+            color: #dc3545;
+            border: 2px solid rgba(220, 53, 69, 0.2);
+        }
+
+        .code-display {
+            background: #f8f9fa;
+            padding: 12px;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            word-break: break-all;
+            margin-top: 10px;
+            border: 1px solid #e9ecef;
+        }
+
+        .logs {
+            max-height: 200px;
+            overflow-y: auto;
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            padding: 12px;
+            margin-top: 15px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            text-align: left;
+            display: none;
+        }
+
+        .log-entry {
+            margin-bottom: 5px;
+            padding: 2px 6px;
+            border-radius: 4px;
+        }
+
+        .log-info { background: rgba(23, 162, 184, 0.1); color: #17a2b8; }
+        .log-error { background: rgba(220, 53, 69, 0.1); color: #dc3545; }
+        .log-debug { background: rgba(108, 117, 125, 0.1); color: #6c757d; }
+
+        .memory-info {
+            background: rgba(255, 193, 7, 0.1);
+            color: #ffc107;
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-size: 12px;
+            margin-top: 10px;
+            border: 1px solid rgba(255, 193, 7, 0.3);
+        }
+
+        .history-list {
+            max-height: 400px;
+            overflow-y: auto;
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 12px;
+            padding: 15px;
+        }
+
+        .history-empty {
+            text-align: center;
+            color: #666;
+            padding: 40px 20px;
+            font-style: italic;
+        }
+
+        .history-item {
+            background: white;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 10px;
+            transition: all 0.3s ease;
+        }
+
+        .history-item:hover {
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            transform: translateY(-1px);
+        }
+
+        .history-item:last-child {
+            margin-bottom: 0;
+        }
+
+        .history-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .history-type {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .history-type.upload {
+            background: rgba(40, 167, 69, 0.1);
+            color: #28a745;
+        }
+
+        .history-type.download {
+            background: rgba(23, 162, 184, 0.1);
+            color: #17a2b8;
+        }
+
+        .history-time {
+            font-size: 12px;
+            color: #666;
+        }
+
+        .history-content {
+            font-size: 14px;
+            color: #333;
+            margin-bottom: 8px;
+        }
+
+        .history-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .history-btn {
+            padding: 4px 8px;
+            border: 1px solid #e9ecef;
+            background: white;
+            border-radius: 4px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .history-btn:hover {
+            background: #f8f9fa;
+            border-color: #667eea;
+            color: #667eea;
+        }
+
+        .history-btn.copy {
+            color: #28a745;
+            border-color: rgba(40, 167, 69, 0.3);
+        }
+
+        .history-btn.copy:hover {
+            background: rgba(40, 167, 69, 0.1);
+        }
+
+        .history-btn.download {
+            color: #17a2b8;
+            border-color: rgba(23, 162, 184, 0.3);
+        }
+
+        .history-btn.download:hover {
+            background: rgba(23, 162, 184, 0.1);
+        }
+
+        @media (max-width: 600px) {
+            .container {
+                margin: 10px;
+                padding: 20px;
+            }
+            
+            .logo {
+                font-size: 2rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo">📁 xlog网盘</div>
+        <div class="subtitle">基于IPFS的文件分享服务</div>
+        
+        <div class="tab-container">
+            <button class="tab active" onclick="switchTab('upload')">📤 上传文件</button>
+            <button class="tab" onclick="switchTab('download')">📥 下载文件</button>
+            <button class="tab" onclick="switchTab('history')">📋 历史记录</button>
+        </div>
+
+        <!-- 上传标签页 -->
+        <div id="upload-tab" class="tab-content active">
+            <div class="form-group">
+                <label>选择文件</label>
+                <div class="file-upload" id="fileUpload">
+                    <input type="file" id="fileInput" onchange="handleFileSelect(event)">
+                    <label for="fileInput" class="file-upload-label" id="fileLabel">
+                        🗂️ 点击选择文件或拖拽到此处
+                    </label>
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label for="fileName">文件名称（可选）</label>
+                <input type="text" id="fileName" class="form-control" placeholder="留空使用原文件名">
+            </div>
+            
+            <button class="btn btn-primary" id="uploadBtn" onclick="uploadFile()" disabled>
+                📤 开始上传
+            </button>
+            
+            <div class="progress" id="uploadProgress">
+                <div class="progress-bar" id="uploadProgressBar"></div>
+            </div>
+            
+            <div class="result" id="uploadResult"></div>
+            <div class="logs" id="uploadLogs"></div>
+        </div>
+
+        <!-- 下载标签页 -->
+        <div id="download-tab" class="tab-content">
+            <div class="form-group">
+                <label for="downloadCode">取件码</label>
+                <input type="text" id="downloadCode" class="form-control" placeholder="输入取件码" onchange="handleDownloadCodeChange()">
+            </div>
+            
+            <div class="form-group">
+                <label for="saveFileName">保存文件名（可选）</label>
+                <input type="text" id="saveFileName" class="form-control" placeholder="留空使用原文件名">
+            </div>
+            
+            <button class="btn btn-primary" id="downloadBtn" onclick="downloadFile()" disabled>
+                📥 开始下载
+            </button>
+            
+            <div class="progress" id="downloadProgress">
+                <div class="progress-bar" id="downloadProgressBar"></div>
+            </div>
+            
+            <div class="result" id="downloadResult"></div>
+            <div class="logs" id="downloadLogs"></div>
+        </div>
+
+        <!-- 历史记录标签页 -->
+        <div id="history-tab" class="tab-content">
+            <div style="display: flex; gap: 10px; margin-bottom: 20px;">
+                <button class="btn btn-primary" style="flex: 1;" onclick="clearHistory()">
+                    🗑️ 清空记录
+                </button>
+                <button class="btn btn-primary" style="flex: 1;" onclick="exportHistory()">
+                    📤 导出记录
+                </button>
+            </div>
+            
+            <div id="historyList" class="history-list">
+                <div class="history-empty">暂无历史记录</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- StreamSaver.js -->
+    <script src="/StreamSaver/StreamSaver.js"></script>
+    
+    <script>
+        // 配置
+        const config = {
+            prefix: "https://ipfs.crossbell.io/ipfs/",
+            uploadUrl: "https://ipfs-relay.crossbell.io/upload",
+            chunkSize: 6 * 1024 * 1024, // 6MB
+            defaultFileName: "file.bin"
+        };
+
+        let selectedFile = null;
+        let uploadAbortController = null;
+        let downloadAbortController = null;
+
+        // 初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            setupDragAndDrop();
+            parseUrlParams();
+            
+            // 初始化 StreamSaver
+            if (typeof streamSaver !== 'undefined') {
+                // 使用 Ponyfill 以获得更好的兼容性
+                streamSaver.mitm = '/StreamSaver/mitm.html';
+            }
+        });
+
+        // 解析URL参数
+        function parseUrlParams() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const downloadCode = urlParams.get('d');
+            const fileName = urlParams.get('f');
+            
+            if (downloadCode) {
+                switchTab('download');
+                document.getElementById('downloadCode').value = downloadCode;
+                handleDownloadCodeChange();
+                
+                if (fileName) {
+                    document.getElementById('saveFileName').value = fileName;
+                }
+            }
+        }
+
+        // 切换标签页
+        function switchTab(tabName) {
+            // 取消正在进行的操作
+            if (uploadAbortController) {
+                uploadAbortController.abort();
+                uploadAbortController = null;
+            }
+            if (downloadAbortController) {
+                downloadAbortController.abort();
+                downloadAbortController = null;
+            }
+            
+            document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+            
+            const tabIndex = tabName === 'upload' ? 1 : tabName === 'download' ? 2 : 3;
+            document.querySelector(`.tab:nth-child(${tabIndex})`).classList.add('active');
+            document.getElementById(`${tabName}-tab`).classList.add('active');
+            
+            // 如果切换到历史记录，刷新显示
+            if (tabName === 'history') {
+                refreshHistoryDisplay();
+            }
+            
+            // 重置按钮状态
+            resetButtons();
+        }
+
+        function resetButtons() {
+            document.getElementById('uploadBtn').disabled = !selectedFile;
+            document.getElementById('uploadBtn').textContent = '📤 开始上传';
+            document.getElementById('downloadBtn').disabled = !document.getElementById('downloadCode').value.trim();
+            document.getElementById('downloadBtn').textContent = '📥 开始下载';
+        }
+
+        // 设置拖拽上传
+        function setupDragAndDrop() {
+            const fileUpload = document.getElementById('fileUpload');
+            
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                fileUpload.addEventListener(eventName, preventDefaults, false);
+            });
+
+            function preventDefaults(e) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+
+            ['dragenter', 'dragover'].forEach(eventName => {
+                fileUpload.addEventListener(eventName, () => fileUpload.classList.add('drag-over'), false);
+            });
+
+            ['dragleave', 'drop'].forEach(eventName => {
+                fileUpload.addEventListener(eventName, () => fileUpload.classList.remove('drag-over'), false);
+            });
+
+            fileUpload.addEventListener('drop', handleDrop, false);
+        }
+
+        function handleDrop(e) {
+            const dt = e.dataTransfer;
+            const files = dt.files;
+            
+            if (files.length > 0) {
+                selectedFile = files[0];
+                updateFileLabel();
+                document.getElementById('uploadBtn').disabled = false;
+            }
+        }
+
+        function handleFileSelect(event) {
+            const file = event.target.files[0];
+            if (file) {
+                selectedFile = file;
+                updateFileLabel();
+                document.getElementById('uploadBtn').disabled = false;
+            }
+        }
+
+        function updateFileLabel() {
+            const label = document.getElementById('fileLabel');
+            if (selectedFile) {
+                label.innerHTML = `📄 ${selectedFile.name} (${formatFileSize(selectedFile.size)})`;
+                
+                // 自动填充文件名
+                if (!document.getElementById('fileName').value) {
+                    document.getElementById('fileName').value = selectedFile.name;
+                }
+            }
+        }
+
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
+        function handleDownloadCodeChange() {
+            const code = document.getElementById('downloadCode').value.trim();
+            document.getElementById('downloadBtn').disabled = !code;
+        }
+
+        // 日志功能
+        function addLog(message, type = 'info', containerId = 'uploadLogs') {
+            const logsContainer = document.getElementById(containerId);
+            logsContainer.style.display = 'block';
+            
+            const logEntry = document.createElement('div');
+            logEntry.className = `log-entry log-${type}`;
+            logEntry.textContent = `${new Date().toLocaleTimeString()} - ${message}`;
+            
+            logsContainer.appendChild(logEntry);
+            logsContainer.scrollTop = logsContainer.scrollHeight;
+        }
+
+        function clearLogs(containerId) {
+            const logsContainer = document.getElementById(containerId);
+            logsContainer.innerHTML = '';
+            logsContainer.style.display = 'none';
+        }
+
+        function showResult(message, isSuccess, resultId) {
+            const result = document.getElementById(resultId);
+            result.className = `result ${isSuccess ? 'success' : 'error'}`;
+            result.innerHTML = message;
+            result.style.display = 'block';
+        }
+
+        function showMemoryInfo(containerId) {
+            // 移除内存信息显示
+        }
+
+        // 历史记录功能
+        function saveToHistory(type, data) {
+            const history = getHistory();
+            const record = {
+                id: Date.now(),
+                type: type, // 'upload' or 'download'
+                timestamp: new Date().toISOString(),
+                ...data
+            };
+            
+            history.unshift(record);
+            
+            // 限制历史记录数量，保留最近100条
+            if (history.length > 100) {
+                history.splice(100);
+            }
+            
+            try {
+                localStorage.setItem('xlog_history', JSON.stringify(history));
+            } catch (e) {
+                console.warn('无法保存历史记录到本地存储:', e);
+            }
+        }
+
+        function getHistory() {
+            try {
+                const history = localStorage.getItem('xlog_history');
+                return history ? JSON.parse(history) : [];
+            } catch (e) {
+                console.warn('无法读取历史记录:', e);
+                return [];
+            }
+        }
+
+        function clearHistory() {
+            if (confirm('确定要清空所有历史记录吗？')) {
+                try {
+                    localStorage.removeItem('xlog_history');
+                    refreshHistoryDisplay();
+                } catch (e) {
+                    console.warn('无法清空历史记录:', e);
+                }
+            }
+        }
+
+        function exportHistory() {
+            const history = getHistory();
+            if (history.length === 0) {
+                alert('暂无历史记录可导出');
+                return;
+            }
+            
+            const dataStr = JSON.stringify(history, null, 2);
+            const blob = new Blob([dataStr], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `xlog_history_${new Date().toISOString().slice(0, 10)}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        function refreshHistoryDisplay() {
+            const historyList = document.getElementById('historyList');
+            const history = getHistory();
+            
+            if (history.length === 0) {
+                historyList.innerHTML = '<div class="history-empty">暂无历史记录</div>';
+                return;
+            }
+            
+            const historyHtml = history.map(record => {
+                const time = new Date(record.timestamp).toLocaleString();
+                const typeClass = record.type;
+                const typeText = record.type === 'upload' ? '上传' : '下载';
+                
+                let content = '';
+                let actions = '';
+                
+                if (record.type === 'upload') {
+                    content = `文件: ${record.fileName}<br>取件码: ${record.cid}`;
+                    actions = `
+                        <button class="history-btn copy" onclick="copyToClipboard('${record.cid}')">复制取件码</button>
+                        <button class="history-btn copy" onclick="copyToClipboard('${window.location.origin}${window.location.pathname}?d=${record.cid}')">复制链接</button>
+                    `;
+                } else {
+                    content = `文件: ${record.fileName}<br>取件码: ${record.cid}`;
+                    actions = `
+                        <button class="history-btn download" onclick="useHistoryRecord('${record.cid}', '${record.fileName}')">重新下载</button>
+                        <button class="history-btn copy" onclick="copyToClipboard('${record.cid}')">复制取件码</button>
+                    `;
+                }
+                
+                return `
+                    <div class="history-item">
+                        <div class="history-header">
+                            <span class="history-type ${typeClass}">${typeText}</span>
+                            <span class="history-time">${time}</span>
+                        </div>
+                        <div class="history-content">${content}</div>
+                        <div class="history-actions">${actions}</div>
+                    </div>
+                `;
+            }).join('');
+            
+            historyList.innerHTML = historyHtml;
+        }
+
+        function copyToClipboard(text) {
+            navigator.clipboard.writeText(text).then(() => {
+                // 简单的提示
+                const originalText = event.target.textContent;
+                event.target.textContent = '已复制!';
+                setTimeout(() => {
+                    event.target.textContent = originalText;
+                }, 1000);
+            }).catch(err => {
+                console.error('复制失败:', err);
+                // 备用方案
+                const textArea = document.createElement('textarea');
+                textArea.value = text;
+                document.body.appendChild(textArea);
+                textArea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textArea);
+                
+                const originalText = event.target.textContent;
+                event.target.textContent = '已复制!';
+                setTimeout(() => {
+                    event.target.textContent = originalText;
+                }, 1000);
+            });
+        }
+
+        function useHistoryRecord(cid, fileName) {
+            switchTab('download');
+            document.getElementById('downloadCode').value = cid;
+            document.getElementById('saveFileName').value = fileName;
+            handleDownloadCodeChange();
+        }
+
+        // 流式文件读取器
+        class StreamFileReader {
+            constructor(file, chunkSize) {
+                this.file = file;
+                this.chunkSize = chunkSize;
+                this.position = 0;
+            }
+
+            async* readChunks() {
+                while (this.position < this.file.size) {
+                    const chunk = this.file.slice(this.position, this.position + this.chunkSize);
+                    this.position += this.chunkSize;
+                    yield chunk;
+                }
+            }
+
+            getProgress() {
+                return this.position / this.file.size;
+            }
+
+            getTotalChunks() {
+                return Math.ceil(this.file.size / this.chunkSize);
+            }
+        }
+
+        // 上传文件（流式处理）
+        async function uploadFile() {
+            if (!selectedFile) {
+                showResult('请先选择文件', false, 'uploadResult');
+                return;
+            }
+
+            const uploadBtn = document.getElementById('uploadBtn');
+            const progressContainer = document.getElementById('uploadProgress');
+            const progressBar = document.getElementById('uploadProgressBar');
+            
+            uploadBtn.disabled = true;
+            uploadBtn.textContent = '📤 上传中...';
+            progressContainer.style.display = 'block';
+            clearLogs('uploadLogs');
+            
+            // 创建 AbortController 用于取消操作
+            uploadAbortController = new AbortController();
+            
+            try {
+                addLog(`开始上传文件: ${selectedFile.name} (${formatFileSize(selectedFile.size)})`);
+                
+                const fileReader = new StreamFileReader(selectedFile, config.chunkSize);
+                const totalChunks = fileReader.getTotalChunks();
+                const fileList = [];
+                
+                addLog(`文件将分成 ${totalChunks} 个分片进行上传`);
+
+                let chunkIndex = 0;
+                for await (const chunk of fileReader.readChunks()) {
+                    // 检查是否被取消
+                    if (uploadAbortController.signal.aborted) {
+                        throw new Error('上传已取消');
+                    }
+
+                    chunkIndex++;
+                    addLog(`正在上传第 ${chunkIndex}/${totalChunks} 个分片`);
+                    
+                    const formData = new FormData();
+                    formData.append('file', chunk);
+                    
+                    const response = await fetch(config.uploadUrl, {
+                        method: 'POST',
+                        body: formData,
+                        signal: uploadAbortController.signal
+                    });
+                    
+                    if (!response.ok) {
+                        throw new Error(`上传分片失败: ${response.status}`);
+                    }
+                    
+                    const data = await response.json();
+                    if (data.status !== 'ok') {
+                        throw new Error(`上传分片失败: ${JSON.stringify(data)}`);
+                    }
+                    
+                    fileList.push(data.cid);
+                    
+                    // 更新进度
+                    const progress = (chunkIndex / totalChunks) * 90; // 90% for chunks, 10% for metadata
+                    progressBar.style.width = `${progress}%`;
+                }
+
+                addLog('所有分片上传完成，正在生成元文件');
+                
+                // 创建元文件
+                const fileName = document.getElementById('fileName').value.trim() || selectedFile.name;
+                const metaFile = {
+                    name: fileName,
+                    cid: fileList
+                };
+                
+                // 上传元文件
+                const metaFormData = new FormData();
+                metaFormData.append('file', new Blob([JSON.stringify(metaFile)], { type: 'application/json' }));
+                
+                const metaResponse = await fetch(config.uploadUrl, {
+                    method: 'POST',
+                    body: metaFormData,
+                    signal: uploadAbortController.signal
+                });
+                
+                if (!metaResponse.ok) {
+                    throw new Error(`上传元文件失败: ${metaResponse.status}`);
+                }
+                
+                const metaData = await metaResponse.json();
+                if (metaData.status !== 'ok') {
+                    throw new Error(`上传元文件失败: ${JSON.stringify(metaData)}`);
+                }
+                
+                progressBar.style.width = '100%';
+                addLog('上传完成！');
+                
+                const cid = metaData.cid;
+                
+                // 保存到历史记录
+                saveToHistory('upload', {
+                    fileName: fileName,
+                    fileSize: selectedFile.size,
+                    cid: cid
+                });
+                
+                showResult(`
+                    ✅ 上传成功！<br>
+                    <div class="code-display">取件码: ${cid}</div>
+                    <div style="margin-top: 10px; font-size: 12px; color: #666;">
+                        分享链接: ${window.location.origin}${window.location.pathname}?d=${cid}
+                    </div>
+                `, true, 'uploadResult');
+                
+            } catch (error) {
+                if (error.name === 'AbortError' || error.message === '上传已取消') {
+                    addLog('上传已取消', 'error');
+                    showResult('上传已取消', false, 'uploadResult');
+                } else {
+                    addLog(`上传失败: ${error.message}`, 'error');
+                    showResult(`上传失败: ${error.message}`, false, 'uploadResult');
+                }
+            } finally {
+                uploadAbortController = null;
+                uploadBtn.disabled = false;
+                uploadBtn.textContent = '📤 开始上传';
+                setTimeout(() => {
+                    progressContainer.style.display = 'none';
+                    progressBar.style.width = '0%';
+                }, 2000);
+            }
+        }
+
+        // 流式下载文件
+        async function downloadFile() {
+            const downloadCode = document.getElementById('downloadCode').value.trim();
+            if (!downloadCode) {
+                showResult('请输入取件码', false, 'downloadResult');
+                return;
+            }
+
+            // 检查 StreamSaver 是否可用
+            if (typeof streamSaver === 'undefined') {
+                showResult('StreamSaver 未加载，无法进行大文件下载', false, 'downloadResult');
+                return;
+            }
+
+            const downloadBtn = document.getElementById('downloadBtn');
+            const progressContainer = document.getElementById('downloadProgress');
+            const progressBar = document.getElementById('downloadProgressBar');
+            
+            downloadBtn.disabled = true;
+            downloadBtn.textContent = '📥 下载中...';
+            progressContainer.style.display = 'block';
+            clearLogs('downloadLogs');
+            
+            // 创建 AbortController 用于取消操作
+            downloadAbortController = new AbortController();
+            
+            let fileStream = null;
+            let writer = null;
+            
+            try {
+                addLog('正在获取文件信息...', 'info', 'downloadLogs');
+                
+                // 获取元文件信息
+                const metaResponse = await fetch(config.prefix + downloadCode, {
+                    signal: downloadAbortController.signal
+                });
+                
+                if (!metaResponse.ok) {
+                    throw new Error(`获取文件信息失败: ${metaResponse.status}`);
+                }
+                
+                const metaData = await metaResponse.json();
+                const fileName = metaData.name || config.defaultFileName;
+                const cidList = metaData.cid || [];
+                
+                if (cidList.length === 0) {
+                    throw new Error('文件信息无效');
+                }
+                
+                addLog(`文件名: ${fileName}, 分片数: ${cidList.length}`, 'info', 'downloadLogs');
+                
+                // 确定最终文件名
+                const saveFileName = document.getElementById('saveFileName').value.trim() || fileName;
+                
+                // 创建 StreamSaver 文件流
+                fileStream = streamSaver.createWriteStream(saveFileName);
+                writer = fileStream.getWriter();
+                
+                // 流式下载所有分片
+                for (let i = 0; i < cidList.length; i++) {
+                    // 检查是否被取消
+                    if (downloadAbortController.signal.aborted) {
+                        throw new Error('下载已取消');
+                    }
+
+                    const cid = cidList[i];
+                    addLog(`正在下载第 ${i + 1}/${cidList.length} 个分片`, 'info', 'downloadLogs');
+                    
+                    const response = await fetch(config.prefix + cid, {
+                        signal: downloadAbortController.signal
+                    });
+                    
+                    if (!response.ok) {
+                        throw new Error(`下载分片失败: ${response.status}`);
+                    }
+                    
+                    // 使用流式读取器读取响应
+                    const reader = response.body.getReader();
+                    
+                    try {
+                        while (true) {
+                            const { done, value } = await reader.read();
+                            
+                            if (done) break;
+                            
+                            // 检查是否被取消
+                            if (downloadAbortController.signal.aborted) {
+                                throw new Error('下载已取消');
+                            }
+                            
+                            // 直接写入到文件流，不占用额外内存
+                            await writer.write(value);
+                        }
+                    } finally {
+                        reader.releaseLock();
+                    }
+                    
+                    // 更新进度
+                    const progress = ((i + 1) / cidList.length) * 100;
+                    progressBar.style.width = `${progress}%`;
+                }
+                
+                // 完成写入
+                await writer.close();
+                writer = null;
+                fileStream = null;
+                
+                addLog('下载完成！', 'info', 'downloadLogs');
+                
+                // 保存到历史记录
+                saveToHistory('download', {
+                    fileName: saveFileName,
+                    cid: downloadCode
+                });
+                
+                showResult(`✅ 下载完成: ${saveFileName}`, true, 'downloadResult');
+                
+            } catch (error) {
+                // 清理资源
+                if (writer) {
+                    try {
+                        await writer.abort();
+                    } catch (e) {
+                        console.warn('清理 writer 时出错:', e);
+                    }
+                }
+                
+                if (error.name === 'AbortError' || error.message === '下载已取消') {
+                    addLog('下载已取消', 'error', 'downloadLogs');
+                    showResult('下载已取消', false, 'downloadResult');
+                } else {
+                    addLog(`下载失败: ${error.message}`, 'error', 'downloadLogs');
+                    showResult(`下载失败: ${error.message}`, false, 'downloadResult');
+                }
+            } finally {
+                downloadAbortController = null;
+                downloadBtn.disabled = false;
+                downloadBtn.textContent = '📥 开始下载';
+                setTimeout(() => {
+                    progressContainer.style.display = 'none';
+                    progressBar.style.width = '0%';
+                }, 2000);
+            }
+        }
+    </script>
+</body>
+</html>
