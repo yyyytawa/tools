@@ -1,4 +1,5 @@
 import json
+import tomllib as toml
 from html import escape as html_escape
 import requests
 import logging
@@ -23,9 +24,9 @@ def load_monitored_list():
     global monitored_list
     if config.monitored_list_url != "":
         try:
-            data = requests.get(config.monitored_list_url)
-            data.raise_for_status()
-            monitored_list = data.json()
+            response = requests.get(config.monitored_list_url)
+            response.raise_for_status()
+            monitored_list = toml.loads(response.text)
             logging.info("从网络获取监控列表成功")
         
         except Exception as e:
@@ -353,7 +354,7 @@ def monitor_thread_instance():
                         new_avatar = current_info.get("avatarUrl")
                     )
 
-                    for notify_group in monitored_list.get(id,[]).get("group",""):
+                    for notify_group in monitored_list.get(id).get("group",[]):
                         push_msg(notify_group,"group",msg_content,"html")
                         push_msg(notify_group,"group",msg_content_md,"markdown") # 等后续Feng修HTML访问云湖图床bug后删除
                         logging.info(f"推送 {id} 信息到群组 {notify_group}")

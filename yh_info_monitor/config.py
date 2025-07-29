@@ -16,7 +16,7 @@ monitored_list = { # 不需要可留空
   }
 }
 monitor_data_file = "monitor_data.json"
-monitored_list_url = "" # 填写被监控名单URL
+monitored_list_url = "" # 填写被监控名单URL,格式TOML
 # 等待时长相关
 time_per_object = 10 # 每两个检测对象等待时长
 time_per_check = 10 # 每两轮检测等待时长
