@@ -160,7 +160,7 @@ def push_msg(id,type,content,contenttype): # 发送消息的函数
     global token
     try:
         payload = json.dumps({
-            "recvId": str(id),
+            "recvIds": id,
             "recvType": type,
             "contentType": contenttype,
             "content": { 
@@ -170,11 +170,12 @@ def push_msg(id,type,content,contenttype): # 发送消息的函数
         headers = {
           'Content-Type': 'application/json; charset=utf-8'
         }
-        response = requests.post(f"https://chat-go.jwzhd.com/open-apis/v1/bot/send?token={token}",headers=headers,data=payload)
+        response = requests.post(f"https://chat-go.jwzhd.com/open-apis/v1/bot/batch_send?token={token}",headers=headers,data=payload)
         response.raise_for_status()
         data = response.json()
         if data.get("code") == 1:
-            logging.info("发送成功")
+            logging.info(f"成功发送消息至{data.get("data").get("successCount")}个对象,失败{len(id)-data.get("data").get("successCount")}个,总共{len(id)}个")
+            logging.debug(f"{data}")
         else:
             logging.error(f"发送失败,服务端返回: {data.get('code')}, msg: {data.get('msg')}")
     except Exception as e:
@@ -354,16 +355,18 @@ def monitor_thread_instance():
                         new_avatar = current_info.get("avatarUrl")
                     )
 
-                    for notify_group in monitored_list.get(id).get("group",[]):
+                    notify_group = monitored_list.get(id).get("group",[])
+                    notify_user = monitored_list.get(id).get("user",[])
+
+                    if notify_group:
                         push_msg(notify_group,"group",msg_content,"html")
                         push_msg(notify_group,"group",msg_content_md,"markdown") # 等后续Feng修HTML访问云湖图床bug后删除
                         logging.info(f"推送 {id} 信息到群组 {notify_group}")
-                        time.sleep(time_per_push)
-                    for notify_user in monitored_list.get(id).get("user",[]):
+                    time.sleep(time_per_push)
+                    if notify_user:
                         push_msg(notify_user,"user",msg_content,"html")
                         push_msg(notify_user,"user",msg_content_md,"markdown") # 等后续Feng修HTML访问云湖图床bug后删除
                         logging.info(f"推送 {id} 信息到用户 {notify_user}")
-                        time.sleep(time_per_push)
                         
                     with lock_data:
                         monitor_data[id]["name"] = current_info["name"]
