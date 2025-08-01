@@ -362,7 +362,7 @@ def monitor_thread_instance():
                         push_msg(notify_group,"group",msg_content,"html")
                         push_msg(notify_group,"group",msg_content_md,"markdown") # 等后续Feng修HTML访问云湖图床bug后删除
                         logging.info(f"推送 {id} 信息到群组 {notify_group}")
-                    time.sleep(time_per_push)
+                        time.sleep(time_per_push)
                     if notify_user:
                         push_msg(notify_user,"user",msg_content,"html")
                         push_msg(notify_user,"user",msg_content_md,"markdown") # 等后续Feng修HTML访问云湖图床bug后删除
