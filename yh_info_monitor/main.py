@@ -12,6 +12,9 @@ import os
 logging.basicConfig(level=logging.INFO,
  format='%(asctime)s - %(levelname)s - %(message)s', filename = config.log_file, filemode="w")
 
+httpx_logger = logging.getLogger("httpx")
+httpx_logger.setLevel(logging.WARNING)
+
 time_per_object = config.time_per_object
 time_per_check = config.time_per_check
 time_per_push = config.time_per_push

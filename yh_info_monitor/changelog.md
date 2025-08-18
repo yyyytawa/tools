@@ -1,5 +1,5 @@
 ## 0.0.3
-将 requests 换成 httpx
+将 requests 换成 httpx, 更改 httpx 日志等级
 
 ## 0.0.2
 修改推送间隔,只有当推送群组列表不为空时才有推送间隔.  
