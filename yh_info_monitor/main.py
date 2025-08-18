@@ -1,7 +1,7 @@
 import json
 import tomllib as toml
 from html import escape as html_escape
-import requests
+import httpx
 import logging
 import config
 import time
@@ -24,7 +24,7 @@ def load_monitored_list():
     global monitored_list
     if config.monitored_list_url != "":
         try:
-            response = requests.get(config.monitored_list_url)
+            response = httpx.get(config.monitored_list_url)
             response.raise_for_status()
             monitored_list = toml.loads(response.text)
             logging.info("从网络获取监控列表成功")
@@ -85,7 +85,7 @@ def sync_monitor_data():
 def get_user_info(user_id):
     api=f"https://chat-web-go.jwzhd.com/v1/user/homepage?userId={user_id}"
     try:
-        response = requests.get(api)
+        response = httpx.get(api)
         data = response.json()
         if data.get("code") == 1 and data.get("data") and data.get("data").get("user"):
             user_info = data["data"]["user"]
@@ -109,7 +109,7 @@ def get_group_info(group_id):
     api = "https://chat-web-go.jwzhd.com/v1/group/group-info"
     try:
         post_data = json.dumps({"groupId": str(group_id)})
-        response = requests.post(api,data=post_data)
+        response = httpx.post(api,data=post_data)
         response.raise_for_status()
         data = response.json()
         if data.get("code") == 1 and data.get("data"):
@@ -134,7 +134,7 @@ def get_bot_info(bot_id):
     api = "https://chat-web-go.jwzhd.com/v1/bot/bot-info"
     try:
         post_data = json.dumps({"botId": str(bot_id) })
-        response = requests.post(api, post_data)
+        response = httpx.post(api, post_data)
         logging.debug(response)
         response.raise_for_status()
         data = response.json()
@@ -159,18 +159,18 @@ def get_bot_info(bot_id):
 def push_msg(id,type,content,contenttype): # 发送消息的函数
     global token
     try:
-        payload = json.dumps({
+        payload = {
             "recvIds": id,
             "recvType": type,
             "contentType": contenttype,
             "content": { 
                 "text": content
             }
-        })  
+        }
         headers = {
           'Content-Type': 'application/json; charset=utf-8'
         }
-        response = requests.post(f"https://chat-go.jwzhd.com/open-apis/v1/bot/batch_send?token={token}",headers=headers,data=payload)
+        response = httpx.post(f"https://chat-go.jwzhd.com/open-apis/v1/bot/batch_send?token={token}",headers=headers, json = payload)
         response.raise_for_status()
         data = response.json()
         if data.get("code") == 1:

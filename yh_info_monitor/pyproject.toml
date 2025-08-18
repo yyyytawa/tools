@@ -1,9 +1,9 @@
 [project]
 name = "yh-info-monitor"
-version = "0.0.2"
+version = "0.0.3"
 description = "云湖信息监视机器人"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "requests>=2.32.4",
+    "httpx>=0.28.1",
 ]
