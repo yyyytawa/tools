@@ -2,6 +2,7 @@
 **/__pycache__
 **/.venv
 **/uv.lock
+.ruff_cache/
 
 # 云湖信息监测
 yh_info_monitor/monitor_data.json

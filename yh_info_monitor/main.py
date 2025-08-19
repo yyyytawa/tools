@@ -6,7 +6,7 @@ import logging
 import config
 import time
 import threading
-from datetime import datetime, timedelta
+from datetime import datetime
 import os
 
 logging.basicConfig(level=logging.INFO,
@@ -186,13 +186,13 @@ def push_msg(id,type,content,contenttype): # 发送消息的函数
 
 def make_html(id,type,old_name,new_name,old_avatar,new_avatar,old_introduction, new_introduction, *update_time):
     update_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    if type == "user":
-        type_text = "用户"
-    elif type == "group":
-        type_text = "群聊"
-    elif type == "bot":
-        type_text = "机器人"
-    else:
+    type_mapping = {
+        "user": "用户",
+        "group": "群聊",
+        "bot": "机器人"
+    }
+    type_text = type_mapping.get(type)
+    if not type_text:
         logging.error(f"未知类型: {type}")
         type_text = ""
 
@@ -288,11 +288,11 @@ def make_html(id,type,old_name,new_name,old_avatar,new_avatar,old_introduction, 
 </div>"""
     return html_content
 
-def make_md(old_avatar, new_avatar): # 等后续Feng修HTML访问云湖图床bug后删除
+def make_md(old_avatar, new_avatar): # ~~等后续Feng修HTML访问云湖图床bug后删除~~ 代码二次利用
     if old_avatar == new_avatar:
-        content =f"![avatar]({new_avatar})"
+        content =f"```Now_avatar \n{new_avatar}\n```"
     else:
-        content =f"![new_avatar]({new_avatar})\n![]({old_avatar})"
+        content =f"```New_avatar \n{new_avatar}\n```\n```Old_avatar\n{old_avatar}\n```"
     return content
 
 def monitor_thread_instance():
@@ -363,12 +363,12 @@ def monitor_thread_instance():
 
                     if notify_group:
                         push_msg(notify_group,"group",msg_content,"html")
-                        push_msg(notify_group,"group",msg_content_md,"markdown") # 等后续Feng修HTML访问云湖图床bug后删除
+                        push_msg(notify_group,"group",msg_content_md,"markdown") # ~~等后续Feng修HTML访问云湖图床bug后删除~~ 代码二次利用x2
                         logging.info(f"推送 {id} 信息到群组 {notify_group}")
                         time.sleep(time_per_push)
                     if notify_user:
                         push_msg(notify_user,"user",msg_content,"html")
-                        push_msg(notify_user,"user",msg_content_md,"markdown") # 等后续Feng修HTML访问云湖图床bug后删除
+                        push_msg(notify_user,"user",msg_content_md,"markdown") # ~~等后续Feng修HTML访问云湖图床bug后删除~~ 代码二次利用x3
                         logging.info(f"推送 {id} 信息到用户 {notify_user}")
                         
                     with lock_data:
