@@ -181,7 +181,7 @@ def push_msg(id,type,content,contenttype): # 发送消息的函数
         response.raise_for_status()
         data = response.json()
         if data.get("code") == 1:
-            logging.info(f"成功发送消息至{data.get("data").get("successCount")}个对象,失败{len(id)-data.get("data").get("successCount")}个,总共{len(id)}个")
+            logging.info(f"推送消息给{len(id)}个对象,成功{data.get("data").get("successCount")}个对象,失败{len(id)-data.get("data").get("successCount")}个,")
             logging.debug(f"{data}")
         else:
             logging.error(f"发送失败,服务端返回: {data.get('code')}, msg: {data.get('msg')}")
@@ -339,7 +339,7 @@ def monitor_thread_instance():
                     time.sleep(time_per_object/10)
                     continue
                 start_time = time.time()
-                old_info = monitor_data.get(id, {})
+                old_info = monitor_data.get(id, {}).copy()
 
                 type = monitored_list.get(id).get("type","user")
                 if type == "user":
@@ -425,40 +425,40 @@ async def monitor_async_ws():
         if not msg.get("sender",{}).get("chatId"):
             logging.info("WS: 无法获取到发送者的chatId,跳过")
             continue
+
         sender_info = msg["sender"]
         if sender_info.get("chatId") not in monitored_list:
             logging.info(f"WS: 对象 {sender_info.get('chatId')} 不在被监控列表中,跳过")
             continue
+
         last_active_info[sender_info["chatId"]] = int(msg["timestamp"])/1000
         logging.debug(last_active_info)
-        old_info = monitor_data.get(sender_info["chatId"])
+        old_info = monitor_data.get(sender_info["chatId"], {}).copy()
         if not old_info:
             logging.info(f"WS: 首次记录对象 {sender_info['chatId']} 的信息")
             with lock_data:
-                monitor_data[sender_info["chatId"]]["name"] = sender_info.get("name","")
-                monitor_data[sender_info["chatId"]]["avatarUrl"] = sender_info.get("avatarUrl","")
-                monitor_data[sender_info["chatId"]]["introduction"] = ""
-                save_monitor_data()
-                continue
+                monitor_data[sender_info["chatId"]] = {
+                    "name": sender_info.get("name"),
+                    "avatarUrl": sender_info.get("avatarUrl"),
+                    "introduction": ""
+                }
+            save_monitor_data()
+            continue
 
-        name_changed = sender_info.get("name","") != old_info.get("name")
-        avatar_changed = sender_info.get("avatarUrl", "") != old_info.get("avatarUrl")
+        name_changed = sender_info.get("name") != old_info.get("name")
+        avatar_changed = sender_info.get("avatarUrl") != old_info.get("avatarUrl")
         changed = name_changed or avatar_changed
         if changed:
             logging.info(f"对象 {sender_info['chatId']} 信息发生变化,准备推送,相关msg_id: {msg['msgId']}")
+            logging.info(old_info)
+            logging.info(sender_info)
             with lock_data:
-                monitor_data[sender_info["chatId"]]["name"] = sender_info.get("name","")
-                monitor_data[sender_info["chatId"]]["avatarUrl"] = sender_info.get("avatarUrl","")
-                monitor_data[sender_info["chatId"]]["introduction"] = monitor_data[sender_info["chatId"]].get("introduction","")
-                save_monitor_data()
+                monitor_data[sender_info["chatId"]]["name"] = sender_info.get("name")
+                monitor_data[sender_info["chatId"]]["avatarUrl"] = sender_info.get("avatarUrl")
+            save_monitor_data()
 
-            type_mapping = {
-                1: "user",
-                3: "bot"
-            }
-            type = type_mapping.get(sender_info["chatType"],"unknown")
             notify(id = sender_info["chatId"],
-                  type = type,
+                  type = monitored_list.get(sender_info["chatId"], {}).get("type", "user"),
                   old_name = old_info.get("name"),
                   new_name = sender_info.get("name"),
                   old_avatar = old_info.get("avatarUrl"),
