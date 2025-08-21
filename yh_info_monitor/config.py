@@ -1,4 +1,5 @@
 bot_token = "11451419180"    # BOT TOKEN
+user_token = "" # 用户token,若要启用ws被动检测需要填写此项
 # 监控列表与监控数据相关
 monitored_list = { # 不需要可留空
   "6301414": {

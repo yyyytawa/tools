@@ -6,6 +6,8 @@ import logging
 import config
 import time
 import threading
+import asyncio
+from mod.ws import ws
 from datetime import datetime
 import os
 
@@ -19,6 +21,8 @@ time_per_object = config.time_per_object
 time_per_check = config.time_per_check
 time_per_push = config.time_per_push
 monitor_data_file = config.monitor_data_file
+user_token = config.user_token
+last_active_info = {}
 token = config.bot_token
 lock_data = threading.Lock()
 isstarted = False
@@ -111,8 +115,8 @@ def get_user_info(user_id):
 def get_group_info(group_id):
     api = "https://chat-web-go.jwzhd.com/v1/group/group-info"
     try:
-        post_data = json.dumps({"groupId": str(group_id)})
-        response = httpx.post(api,data=post_data)
+        post_data = {"groupId": str(group_id)}
+        response = httpx.post(api, json = post_data)
         response.raise_for_status()
         data = response.json()
         if data.get("code") == 1 and data.get("data"):
@@ -136,8 +140,8 @@ def get_group_info(group_id):
 def get_bot_info(bot_id):
     api = "https://chat-web-go.jwzhd.com/v1/bot/bot-info"
     try:
-        post_data = json.dumps({"botId": str(bot_id) })
-        response = httpx.post(api, post_data)
+        post_data = {"botId": str(bot_id) }
+        response = httpx.post(api, json = post_data)
         logging.debug(response)
         response.raise_for_status()
         data = response.json()
@@ -295,14 +299,46 @@ def make_md(old_avatar, new_avatar): # ~~等后续Feng修HTML访问云湖图床b
         content =f"```New_avatar \n{new_avatar}\n```\n```Old_avatar\n{old_avatar}\n```"
     return content
 
+def notify(id: list, type: str, old_name: str, new_name: str, old_avatar: str, new_avatar: str, old_introduction: str, new_introduction: str, notify_user = [], notify_group = []):
+    msg_content = make_html(
+        id,
+        type = type,
+        old_name = old_name,
+        new_name = new_name,
+        old_avatar = old_avatar,
+        new_avatar = new_avatar,
+        old_introduction = old_introduction,
+        new_introduction = new_introduction
+        )
+                    
+    msg_content_md = make_md( # ~~等后续Feng修HTML访问云湖图床bug后删除~~ 代码复用啦啦啦🌶️~
+        old_avatar = old_avatar,
+        new_avatar = new_avatar
+    )
+
+    if notify_group:
+        push_msg(notify_group,"group",msg_content,"html")
+        push_msg(notify_group,"group",msg_content_md,"markdown") # ~~等后续Feng修HTML访问云湖图床bug后删除~~ 代码二次利用x2
+        logging.info(f"推送 {id} 信息到群组 {notify_group}")
+        time.sleep(time_per_push)
+    if notify_user:
+        push_msg(notify_user,"user",msg_content,"html")
+        push_msg(notify_user,"user",msg_content_md,"markdown") # ~~等后续Feng修HTML访问云湖图床bug后删除~~ 代码二次利用x3
+        logging.info(f"推送 {id} 信息到用户 {notify_user}")
+
 def monitor_thread_instance():
-    global monitor_data, monitored_list, time_per_check, time_per_object, time_per_push
+    global monitor_data, monitored_list, time_per_check, time_per_object, time_per_push, last_active_info
     logging.info("监控线程开始启动")
     while True:
         try:
             list_to_check = list(monitored_list.keys())
             logging.info(f"开启本轮检查,共 {len(list_to_check)} 个对象")
             for id in monitored_list:
+                if time.time()-last_active_info.get(id,0) < 3600:
+                    logging.info(f"对象 {id} 在最近1h内活跃过,跳过")
+                    time.sleep(time_per_object/10)
+                    continue
+                start_time = time.time()
                 old_info = monitor_data.get(id, {})
 
                 type = monitored_list.get(id).get("type","user")
@@ -342,40 +378,26 @@ def monitor_thread_instance():
                 changed = name_changed or avatar_changed or introduction_changed
                 
                 if changed:
-                    msg_content = make_html(
-                        id,
-                        type = type,
-                        old_name = old_info.get("name"),
-                        new_name = current_info.get("name"),
-                        old_avatar = old_info.get("avatarUrl"),
-                        new_avatar = current_info.get("avatarUrl"),
-                        old_introduction = old_info.get("introduction",""),
-                        new_introduction = current_info.get("introduction","")
-                    )
-                    
-                    msg_content_md = make_md( # 等后续Feng修HTML访问云湖图床bug后删除
-                        old_avatar = old_info.get("avatarUrl"),
-                        new_avatar = current_info.get("avatarUrl")
-                    )
-
-                    notify_group = monitored_list.get(id).get("group",[])
-                    notify_user = monitored_list.get(id).get("user",[])
-
-                    if notify_group:
-                        push_msg(notify_group,"group",msg_content,"html")
-                        push_msg(notify_group,"group",msg_content_md,"markdown") # ~~等后续Feng修HTML访问云湖图床bug后删除~~ 代码二次利用x2
-                        logging.info(f"推送 {id} 信息到群组 {notify_group}")
-                        time.sleep(time_per_push)
-                    if notify_user:
-                        push_msg(notify_user,"user",msg_content,"html")
-                        push_msg(notify_user,"user",msg_content_md,"markdown") # ~~等后续Feng修HTML访问云湖图床bug后删除~~ 代码二次利用x3
-                        logging.info(f"推送 {id} 信息到用户 {notify_user}")
-                        
+                    if not start_time > last_active_info.get(id, 0):   # 加个检测防止和ws的重复推送
+                        logging.info(f"对象 {id} 的信息变化可能被WS推送过,跳过")
+                        time.sleep(time_per_object/10)
+                        continue
                     with lock_data:
                         monitor_data[id]["name"] = current_info["name"]
                         monitor_data[id]["avatarUrl"] = current_info["avatarUrl"]
                         monitor_data[id]["introduction"] = current_info.get("introduction","")
                     save_monitor_data()
+
+                    notify(id = id,
+                          type = type,
+                          old_name = old_info.get("name"),
+                          new_name = current_info.get("name"),
+                          old_avatar = old_info.get("avatarUrl"),
+                          new_avatar = current_info.get("avatarUrl"),
+                          old_introduction = old_info.get("introduction",""),
+                          new_introduction = current_info.get("introduction",""),
+                          notify_group = monitored_list.get(id).get("group",[]),
+                          notify_user = monitored_list.get(id).get("user",[]))
                 else:
                     logging.info(f"{type_text}: {id} 信息无变化")
                 time.sleep(time_per_object)
@@ -387,6 +409,67 @@ def monitor_thread_instance():
             logging.error(f"监控线程出错: {str(e)}")
             time.sleep(10)
 
+def monitor_thread_instance_ws():
+    logging.info("开启WS检测线程")
+    while True:
+        try:
+            asyncio.run(monitor_async_ws())
+        except Exception as e:
+            logging.error(f"WS线程发生错误 {e}")
+
+async def monitor_async_ws():
+    global user_token, last_active_info, monitor_data, monitored_list
+    ws_client = ws(user_token)
+    async for data in ws_client.connect(mode = "white", list =["push_message"]):
+        msg = data["data"]["msg"]
+        if not msg.get("sender",{}).get("chatId"):
+            logging.info("WS: 无法获取到发送者的chatId,跳过")
+            continue
+        sender_info = msg["sender"]
+        if sender_info.get("chatId") not in monitored_list:
+            logging.info(f"WS: 对象 {sender_info.get('chatId')} 不在被监控列表中,跳过")
+            continue
+        last_active_info[sender_info["chatId"]] = int(msg["timestamp"])/1000
+        logging.debug(last_active_info)
+        old_info = monitor_data.get(sender_info["chatId"])
+        if not old_info:
+            logging.info(f"WS: 首次记录对象 {sender_info['chatId']} 的信息")
+            with lock_data:
+                monitor_data[sender_info["chatId"]]["name"] = sender_info.get("name","")
+                monitor_data[sender_info["chatId"]]["avatarUrl"] = sender_info.get("avatarUrl","")
+                monitor_data[sender_info["chatId"]]["introduction"] = ""
+                save_monitor_data()
+                continue
+
+        name_changed = sender_info.get("name","") != old_info.get("name")
+        avatar_changed = sender_info.get("avatarUrl", "") != old_info.get("avatarUrl")
+        changed = name_changed or avatar_changed
+        if changed:
+            logging.info(f"对象 {sender_info['chatId']} 信息发生变化,准备推送,相关msg_id: {msg['msgId']}")
+            with lock_data:
+                monitor_data[sender_info["chatId"]]["name"] = sender_info.get("name","")
+                monitor_data[sender_info["chatId"]]["avatarUrl"] = sender_info.get("avatarUrl","")
+                monitor_data[sender_info["chatId"]]["introduction"] = monitor_data[sender_info["chatId"]].get("introduction","")
+                save_monitor_data()
+
+            type_mapping = {
+                1: "user",
+                3: "bot"
+            }
+            type = type_mapping.get(sender_info["chatType"],"unknown")
+            notify(id = sender_info["chatId"],
+                  type = type,
+                  old_name = old_info.get("name"),
+                  new_name = sender_info.get("name"),
+                  old_avatar = old_info.get("avatarUrl"),
+                  new_avatar = sender_info.get("avatarUrl"),
+                  old_introduction = old_info.get("introduction",""),
+                  new_introduction = old_info.get("introduction",""),
+                  notify_group = monitored_list.get(sender_info["chatId"]).get("group",[]),
+                  notify_user = monitored_list.get(sender_info["chatId"]).get("user",[]))
+        else:
+            logging.info(f"WS: 对象 {sender_info.get("chatId")} 信息无变化")
+
 def start_monitor_thread():
     global isstarted
     if isstarted:
@@ -394,6 +477,9 @@ def start_monitor_thread():
         return
     load_monitored_list()
     load_monitor_data()
+    if user_token:
+        monitor_thread_ws = threading.Thread(target=monitor_thread_instance_ws, daemon=True)
+        monitor_thread_ws.start()
     monitor_thread = threading.Thread(target=monitor_thread_instance, daemon=True)
     monitor_thread.start()
     isstarted = True
